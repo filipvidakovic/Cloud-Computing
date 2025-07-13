@@ -1,13 +1,13 @@
-from aws_cdk import aws_cognito as cognito, RemovalPolicy
+from aws_cdk import aws_cognito as cognito, RemovalPolicy, CfnOutput
 from constructs import Construct
+from ..config import PROJECT_PREFIX
 
 class CognitoAuth(Construct):
     def __init__(self, scope: Construct, id: str):
         super().__init__(scope, id)
 
-        # User Pool
         self.user_pool = cognito.UserPool(
-            self, "UserPool",
+            self, f"{PROJECT_PREFIX}UserPool",
             self_sign_up_enabled=True,
             sign_in_aliases=cognito.SignInAliases(email=True),
             auto_verify=cognito.AutoVerifiedAttrs(email=True),
@@ -24,9 +24,8 @@ class CognitoAuth(Construct):
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        # User Pool Client
         self.user_pool_client = cognito.UserPoolClient(
-            self, "UserPoolClient",
+            self, f"{PROJECT_PREFIX}UserPoolClient",
             user_pool=self.user_pool,
             generate_secret=False,
             auth_flows=cognito.AuthFlow(
@@ -35,7 +34,5 @@ class CognitoAuth(Construct):
             )
         )
 
-        # Output UserPool and Client IDs
-        from aws_cdk import CfnOutput
         CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
         CfnOutput(self, "UserPoolClientId", value=self.user_pool_client.user_pool_client_id)
