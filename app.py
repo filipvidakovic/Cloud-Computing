@@ -2,12 +2,15 @@
 import os
 
 import aws_cdk as cdk
+from dotenv import load_dotenv
 
 from projekat.projekat_stack import ProjekatStack
 
+load_dotenv()
 
+PROJECT_PREFIX = os.getenv("PROJECT_PREFIX", "MyApp")
 app = cdk.App()
-ProjekatStack(app, "ProjekatStack",
+ProjekatStack(app, f"{PROJECT_PREFIX}ProjekatStack",
     # If you don't specify 'env', this stack will be environment-agnostic.
     # Account/Region-dependent features and context lookups will not work,
     # but a single synthesized template can be deployed anywhere.
