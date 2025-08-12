@@ -8,8 +8,10 @@ class ApiGateway(Construct):
 
         api = apigw.RestApi(self, f"{PROJECT_PREFIX}AuthApi", rest_api_name=f"{PROJECT_PREFIX}CognitoAuthApi")
 
-        register = api.root.add_resource("register")
-        register.add_method("POST", apigw.LambdaIntegration(lambdas.register_lambda))
+        api.root.add_resource("register").add_method(
+            "POST", apigw.LambdaIntegration(lambdas.register_lambda)
+        )
 
-        login = api.root.add_resource("login")
-        login.add_method("POST", apigw.LambdaIntegration(lambdas.login_lambda))
+        api.root.add_resource("login").add_method(
+            "POST", apigw.LambdaIntegration(lambdas.login_lambda)
+        )

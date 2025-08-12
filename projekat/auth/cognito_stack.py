@@ -9,17 +9,18 @@ class CognitoAuth(Construct):
         self.user_pool = cognito.UserPool(
             self, f"{PROJECT_PREFIX}UserPool",
             self_sign_up_enabled=True,
-            sign_in_aliases=cognito.SignInAliases(email=True),
-            auto_verify=cognito.AutoVerifiedAttrs(email=True),
+            sign_in_aliases=cognito.SignInAliases(email=True, username=True),
+            auto_verify=cognito.AutoVerifiedAttrs(email=False),
             standard_attributes=cognito.StandardAttributes(
-                email=cognito.StandardAttribute(required=True, mutable=False),
+                given_name=cognito.StandardAttribute(required=True, mutable=True),
+                family_name=cognito.StandardAttribute(required=True, mutable=True),
+                birthdate=cognito.StandardAttribute(required=True, mutable=True),
+                email=cognito.StandardAttribute(required=True, mutable=False)
             ),
             password_policy=cognito.PasswordPolicy(
                 min_length=8,
                 require_lowercase=True,
-                require_uppercase=True,
-                require_digits=True,
-                require_symbols=True
+                require_digits=True
             ),
             removal_policy=RemovalPolicy.DESTROY
         )
