@@ -1,9 +1,11 @@
 from aws_cdk import aws_apigateway as apigw
 from constructs import Construct
 from ..config import PROJECT_PREFIX
+from ..music import music_lambdas
+
 
 class ApiGateway(Construct):
-    def __init__(self, scope: Construct, id: str, auth_lambdas, artist_lambdas):
+    def __init__(self, scope: Construct, id: str, auth_lambdas, artist_lambdas, music_lambdas):
         super().__init__(scope, id)
 
         #users
@@ -23,4 +25,12 @@ class ApiGateway(Construct):
             "POST",
             apigw.LambdaIntegration(artist_lambdas.create_artist_lambda)
         )
+
+        # music content
+        music_resource = api.root.add_resource("music")
+        music_resource.add_method(
+            "POST",
+            apigw.LambdaIntegration(music_lambdas.upload_music_lambda)
+        )
+
 
