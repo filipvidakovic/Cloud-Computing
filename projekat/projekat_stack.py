@@ -1,3 +1,4 @@
+import aws_cdk
 from aws_cdk import (
     Duration,
     Stack,
@@ -10,11 +11,21 @@ from projekat.artists.artists_lambdas import ArtistLambdas
 from projekat.auth.auth_lambda import AuthLambdas
 from projekat.auth.cognito_stack import CognitoAuth
 from projekat.config import PROJECT_PREFIX
+from aws_cdk import aws_s3 as s3
+
+from projekat.music.music_lambdas import MusicLambdas
+
 
 class ProjekatStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        self.music_bucket = s3.Bucket(
+            self, "MusicBucket",
+            removal_policy=aws_cdk.RemovalPolicy.DESTROY,  # optional for dev/testing
+            auto_delete_objects=True  # optional for dev/testing
+        )
 
         # tables
         self.artist_table = dynamodb.Table(
@@ -25,9 +36,22 @@ class ProjekatStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
         )
+        self.music_table = dynamodb.Table(
+            self, "MusicTable",
+            partition_key=dynamodb.Attribute(
+                name="genre",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="title",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
+        )
 
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
         artist_lambdas = ArtistLambdas(self, "ArtistLambdas", artist_table=self.artist_table)
-        ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", auth_lambdas=auth_lambdas, artist_lambdas=artist_lambdas)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, s3_bucket=self.music_bucket)
+        ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", auth_lambdas=auth_lambdas, artist_lambdas=artist_lambdas, music_lambdas=music_lambdas)
 
