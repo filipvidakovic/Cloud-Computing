@@ -17,7 +17,7 @@ class AuthLambdas(Construct):
             self, f"{PROJECT_PREFIX}RegisterLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="register.handler",
-            code=_lambda.Code.from_asset("lambda"),
+            code=_lambda.Code.from_asset("lambda/auth"),
             environment=env_vars,
             timeout=Duration.seconds(10)
         )
@@ -38,7 +38,7 @@ class AuthLambdas(Construct):
             self, f"{PROJECT_PREFIX}LoginLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="login.handler",
-            code=_lambda.Code.from_asset("lambda"),
+            code=_lambda.Code.from_asset("lambda/auth"),
             environment=env_vars,
             timeout=Duration.seconds(10)
         )
