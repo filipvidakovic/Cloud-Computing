@@ -33,4 +33,17 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.upload_music_lambda)
         )
 
+        # discover endpoint
+        discover_resource = music_resource.add_resource("discover-albums")
+        discover_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
+        )
+
+        # Discover artists endpoint
+        discover_artists_resource = music_resource.add_resource("discover-artists")
+        discover_artists_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_artists_by_genre_lambda)
+        )
 

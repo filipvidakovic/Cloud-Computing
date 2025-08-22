@@ -21,6 +21,27 @@ class MusicLambdas(Construct):
             environment=env_vars,
             timeout=Duration.seconds(30)
         )
+        # Lambda to get albums by genre
+        self.get_albums_by_genre_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetAlbumsByGenreLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_albums_by_genre.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
 
+        # Lambda to get artists by genre
+        self.get_artists_by_genre_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetArtistsByGenreLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_artists_by_genre.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        # Permissions
+        music_table.grant_read_data(self.get_artists_by_genre_lambda)
+        music_table.grant_read_data(self.get_albums_by_genre_lambda)
         music_table.grant_write_data(self.upload_music_lambda)
         s3_bucket.grant_put(self.upload_music_lambda)
