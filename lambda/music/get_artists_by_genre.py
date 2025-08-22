@@ -32,8 +32,10 @@ def lambda_handler(event, context):
             if artist_id not in artist_dict:
                 artist_dict[artist_id] = {
                     "artistId": artist_id,
-                    "genre": genre
+                    "genres": []
                 }
+            if genre not in artist_dict[artist_id]["genres"]:
+                artist_dict[artist_id]["genres"].append(genre)
 
     return {
         "statusCode": 200,
