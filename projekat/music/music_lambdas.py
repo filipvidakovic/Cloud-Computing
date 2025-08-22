@@ -24,3 +24,15 @@ class MusicLambdas(Construct):
 
         music_table.grant_write_data(self.upload_music_lambda)
         s3_bucket.grant_put(self.upload_music_lambda)
+
+        # Lambda to get music metadata and URL
+        self.get_music_details_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_music_details.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
+
+        music_table.grant_read_data(self.get_music_details_lambda)

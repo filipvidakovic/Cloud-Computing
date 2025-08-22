@@ -39,5 +39,9 @@ class ApiGateway(Construct):
             "POST",
             apigw.LambdaIntegration(music_lambdas.upload_music_lambda)
         )
+        music_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_music_details_lambda)
+        )
 
 
