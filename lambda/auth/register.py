@@ -1,3 +1,15 @@
+import json
+
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        },
+        "body": json.dumps(body)
+    }
 def handler(event, context):
     import boto3
     import json
@@ -15,7 +27,7 @@ def handler(event, context):
                     "body": json.dumps({"error": f"Missing field: {field}"})
                 }
 
-        client.sign_up(
+        resp = client.sign_up(
             ClientId=os.environ["CLIENT_ID"],
             Username=body["username"],
             Password=body["password"],
@@ -32,13 +44,6 @@ def handler(event, context):
             Username=body["username"]
         )
 
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"message": "User registered successfully"})
-        }
-
+        return response(200, {"message": "User registered successfully"})
     except Exception as e:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(400, {"error": str(e)})
