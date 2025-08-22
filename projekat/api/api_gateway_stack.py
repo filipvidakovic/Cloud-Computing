@@ -5,12 +5,12 @@ from ..music import music_lambdas
 
 
 class ApiGateway(Construct):
-    def __init__(self, scope: Construct, id: str, auth_lambdas, artist_lambdas, music_lambdas):
+    def __init__(self, scope: Construct, id: str, auth_lambdas, artist_lambdas, music_lambdas, subscription_lambdas):
         super().__init__(scope, id)
         api = apigw.RestApi(
             self,
-            f"{PROJECT_PREFIX}AuthApi",
-            rest_api_name=f"{PROJECT_PREFIX}CognitoAuthApi",
+            f"{PROJECT_PREFIX}RESTApi",
+            rest_api_name=f"{PROJECT_PREFIX}RESTApi",
             default_cors_preflight_options=apigw.CorsOptions(
                 allow_origins=apigw.Cors.ALL_ORIGINS,
                 allow_methods=apigw.Cors.ALL_METHODS,
@@ -40,4 +40,17 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.upload_music_lambda)
         )
 
-
+        # subscriptions
+        subscriptions_resource = api.root.add_resource("subscriptions")
+        subscriptions_resource.add_method(
+            "POST",
+            apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
+        )
+        subscriptions_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
+        )
+        subscriptions_resource.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
+        )
