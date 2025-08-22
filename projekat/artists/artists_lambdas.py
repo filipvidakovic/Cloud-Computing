@@ -20,6 +20,17 @@ class ArtistLambdas(Construct):
             environment=env_vars,
             timeout=Duration.seconds(10)
         )
+        # Lambda to get artist by artistId
+        self.get_artist_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetArtistLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_artist.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/artists"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
 
+        #Permissions
+        artist_table.grant_read_data(self.get_artist_lambda)
         artist_table.grant_write_data(self.create_artist_lambda)
 
