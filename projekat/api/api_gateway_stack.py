@@ -7,10 +7,17 @@ from ..music import music_lambdas
 class ApiGateway(Construct):
     def __init__(self, scope: Construct, id: str, auth_lambdas, artist_lambdas, music_lambdas):
         super().__init__(scope, id)
-
+        api = apigw.RestApi(
+            self,
+            f"{PROJECT_PREFIX}AuthApi",
+            rest_api_name=f"{PROJECT_PREFIX}CognitoAuthApi",
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=apigw.Cors.ALL_ORIGINS,
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=["Content-Type", "Authorization"],
+            )
+        )
         #users
-        api = apigw.RestApi(self, f"{PROJECT_PREFIX}AuthApi", rest_api_name=f"{PROJECT_PREFIX}CognitoAuthApi")
-
         api.root.add_resource("register").add_method(
             "POST", apigw.LambdaIntegration(auth_lambdas.register_lambda)
         )
