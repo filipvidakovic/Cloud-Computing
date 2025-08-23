@@ -56,6 +56,12 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.delete_music_lambda)
         )
 
+        delete_by_artist = music_resource.add_resource("delete-by-artist").add_resource("{artistId}")
+        delete_by_artist.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(music_lambdas.delete_artist_songs_lambda)
+        )
+
         # discover albums
         discover_resource = music_resource.add_resource("discover-albums")
         discover_resource.add_method(

@@ -7,6 +7,9 @@ dynamodb = boto3.resource('dynamodb')
 ARTISTS_TABLE = os.environ['ARTISTS_TABLE']
 table = dynamodb.Table(ARTISTS_TABLE)
 
+lambda_client = boto3.client("lambda")
+DELETE_SONGS_FUNCTION = os.environ["DELETE_SONGS_FUNCTION"]
+
 def lambda_handler(event, context):
     try:
         # Extract artistId from path parameters or body
@@ -31,6 +34,13 @@ def lambda_handler(event, context):
 
         # Perform deletion
         table.delete_item(Key={"artistId": artist_id})
+
+        # invoke lambda for deletion of songs by the artist
+        lambda_client.invoke(
+            FunctionName=DELETE_SONGS_FUNCTION,
+            InvocationType="Event",
+            Payload=json.dumps({"pathParameters": {"artistId": artist_id}}).encode("utf-8")
+        )
 
         return {
             "statusCode": 200,

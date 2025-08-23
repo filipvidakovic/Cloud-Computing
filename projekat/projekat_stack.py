@@ -51,7 +51,7 @@ class ProjekatStack(Stack):
 
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        artist_lambdas = ArtistLambdas(self, "ArtistLambdas", artist_table=self.artist_table)
         music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, s3_bucket=self.music_bucket)
+        artist_lambdas = ArtistLambdas(self, "ArtistLambdas", artist_table=self.artist_table, delete_artist_songs_lambda=music_lambdas.delete_artist_songs_lambda)
         ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", auth_lambdas=auth_lambdas, artist_lambdas=artist_lambdas, music_lambdas=music_lambdas)
 
