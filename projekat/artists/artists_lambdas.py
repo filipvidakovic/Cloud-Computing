@@ -30,7 +30,18 @@ class ArtistLambdas(Construct):
             timeout=Duration.seconds(10)
         )
 
+        # Lambda to delete an artist by artistId
+        self.delete_artist_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteArtistLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_artist.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/artists"),
+            environment={"ARTISTS_TABLE": artist_table.table_name},
+            timeout=Duration.seconds(10)
+        )
+
         #Permissions
         artist_table.grant_read_data(self.get_artist_lambda)
         artist_table.grant_write_data(self.create_artist_lambda)
+        artist_table.grant_read_write_data(self.delete_artist_lambda)
 

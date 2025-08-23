@@ -32,6 +32,14 @@ class ApiGateway(Construct):
             "POST",
             apigw.LambdaIntegration(artist_lambdas.create_artist_lambda)
         )
+        artists_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
+        )
+        artists_resource.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(artist_lambdas.delete_artist_lambda)
+        )
 
         # music content
         music_resource = api.root.add_resource("music")
