@@ -55,5 +55,30 @@ class MusicLambdas(Construct):
             environment=env_vars,
             timeout=Duration.seconds(10)
         )
-
+        # Permissions
         music_table.grant_read_data(self.get_music_details_lambda)
+
+        # Lambda for deleting a song
+        self.delete_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_music.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
+        # Permissions
+        music_table.grant_read_write_data(self.delete_music_lambda)
+        s3_bucket.grant_delete(self.delete_music_lambda)
+
+        # Lambda for deleting all songs of an artist
+        self.delete_artist_songs_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteArtistSongsLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_artist_songs.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        music_table.grant_read_write_data(self.delete_artist_songs_lambda)
+        s3_bucket.grant_delete(self.delete_artist_songs_lambda)
