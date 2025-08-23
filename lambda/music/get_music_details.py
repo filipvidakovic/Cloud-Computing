@@ -11,16 +11,16 @@ def lambda_handler(event, context):
         # Expect genre and title as query params
         params = event.get('queryStringParameters') or {}
         genre = params.get('genre')
-        title = params.get('title')
+        musicId = params.get('musicId')
 
-        if not genre or not title:
+        if not genre or not musicId:
             return {
                 "statusCode": 400,
-                "body": json.dumps({"error": "genre and title are required"})
+                "body": json.dumps({"error": "genre and musicId are required"})
             }
 
         # Get the item
-        response = table.get_item(Key={"genre": genre, "title": title})
+        response = table.get_item(Key={"genre": genre, "musicId": musicId})
         item = response.get('Item')
 
         if not item:
@@ -36,7 +36,7 @@ def lambda_handler(event, context):
                 "genre": item["genre"],
                 "artistIds": item["artistIds"],
                 "albumId": item.get("albumId"),
-                "fileUrl": item["fileUrl"],      
+                "fileUrl": item["fileUrl"],
                 "coverUrl": item.get("coverUrl"),
                 "fileName": item["fileName"],
                 "fileType": item["fileType"],

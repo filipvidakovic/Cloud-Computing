@@ -53,9 +53,9 @@ def lambda_handler(event, context):
         now = datetime.utcnow().isoformat()
         for genre in genres:
             music_item = {
-                "genre": genre,                 # Partition key
-                "title": title,                 # Sort key
-                "musicId": music_id,            # UUID for reference
+                "genre": genre,   # Partition key
+                "musicId": music_id, # Sort key, UUID for reference
+                "title": title,
                 "fileName": file_name,
                 "fileType": file_name.split('.')[-1],
                 "fileSize": len(file_bytes),
