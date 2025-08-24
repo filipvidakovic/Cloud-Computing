@@ -82,3 +82,18 @@ class MusicLambdas(Construct):
         )
         music_table.grant_read_write_data(self.delete_artist_songs_lambda)
         s3_bucket.grant_delete(self.delete_artist_songs_lambda)
+
+        # Lambda for updating music by musicId
+        self.update_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}UpdateMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="update_music.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        # Permissions
+        music_table.grant_read_write_data(self.update_music_lambda)
+        s3_bucket.grant_put(self.update_music_lambda)
+        s3_bucket.grant_delete(self.update_music_lambda)
+

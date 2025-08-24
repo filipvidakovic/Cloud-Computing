@@ -28,14 +28,13 @@ def response(status_code, body):
     }
 
 def lambda_handler(event, context):
-    # Handle CORS preflight request
     if event.get("httpMethod") == "OPTIONS":
         return response(200, {})
 
     try:
         body = json.loads(event.get('body', '{}'))
 
-        # Required fields
+        music_id = body.get('musicId')
         title = body.get('title')
         file_name = body.get('fileName')
         file_content_base64 = body.get('fileContent')
@@ -44,28 +43,43 @@ def lambda_handler(event, context):
         album_id = body.get('albumId')
         cover_image_base64 = body.get('coverImage')
 
-        if not title or not file_name or not file_content_base64 or not artist_ids or not genres:
-            return response(400, {
-                "error": "title, fileName, fileContent, artistIds, and genres are required"
-            })
+        if not music_id or not title or not file_name or not file_content_base64 or not genres or not artist_ids:
+            return response(400, {"error": "musicId, title, fileName, fileContent, genres, and artistIds are required"})
 
-        # Decode and upload audio file
+        # Upload new audio file to S3
         file_bytes = base64.b64decode(file_content_base64)
         music_key = f"{MUSIC_FOLDER}/{uuid.uuid4()}-{file_name}"
         s3.put_object(Bucket=S3_BUCKET, Key=music_key, Body=file_bytes)
         music_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{music_key}"
 
-        # Optional cover image
+        # Optional cover
         cover_url = None
         if cover_image_base64:
             cover_key = f"{COVERS_FOLDER}/{uuid.uuid4()}-cover.jpg"
             s3.put_object(Bucket=S3_BUCKET, Key=cover_key, Body=base64.b64decode(cover_image_base64))
             cover_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{cover_key}"
 
-        # Save metadata to DynamoDB for each genre
-        music_id = str(uuid.uuid4())
+        # Scan all partitions for this musicId
+        scan_result = table.scan(
+            FilterExpression="musicId = :m",
+            ExpressionAttributeValues={":m": music_id}
+        )
+        existing_genres = [item["genre"] for item in scan_result.get("Items", [])]
+
+        # Delete from genres that are no longer included
+        for genre in existing_genres:
+            if genre not in genres:
+                table.delete_item(Key={"genre": genre, "musicId": music_id})
+
+        # Update/put items for new genres
         now = datetime.utcnow().isoformat()
         for genre in genres:
+            try:
+                existing = table.get_item(Key={"genre": genre, "musicId": music_id})
+                created_at = existing.get("Item", {}).get("createdAt", now)  # fallback to now if not found
+            except Exception:
+                created_at = now
+
             music_item = {
                 "genre": genre,
                 "musicId": music_id,
@@ -73,7 +87,7 @@ def lambda_handler(event, context):
                 "fileName": file_name,
                 "fileType": file_name.split('.')[-1],
                 "fileSize": len(file_bytes),
-                "createdAt": now,
+                "createdAt": created_at,
                 "updatedAt": now,
                 "artistIds": artist_ids,
                 "albumId": album_id,
@@ -82,11 +96,10 @@ def lambda_handler(event, context):
             }
             table.put_item(Item=music_item)
 
-        return response(201, {
-            "message": "Music content uploaded successfully",
+        return response(200, {
+            "message": "Music item updated successfully",
             "musicId": music_id,
-            "title": title,
-            "genres": genres,
+            "updatedGenres": genres,
             "fileUrl": music_url,
             "coverUrl": cover_url
         })
