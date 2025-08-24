@@ -16,24 +16,38 @@ COVERS_FOLDER = os.environ.get('COVERS_FOLDER', 'covers')
 
 table = dynamodb.Table(MUSIC_TABLE)
 
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "OPTIONS,POST"
+        },
+        "body": json.dumps(body)
+    }
+
 def lambda_handler(event, context):
+    # Handle CORS preflight request
+    if event.get("httpMethod") == "OPTIONS":
+        return response(200, {})
+
     try:
         body = json.loads(event.get('body', '{}'))
 
         # Required fields
         title = body.get('title')
         file_name = body.get('fileName')
-        file_content_base64 = body.get('fileContent')  # send audio as base64 string
+        file_content_base64 = body.get('fileContent')
         genres = body.get('genres', [])
         artist_ids = body.get('artistIds', [])
-        album_id = body.get('albumId')  # optional
-        cover_image_base64 = body.get('coverImage')  # optional base64
+        album_id = body.get('albumId')
+        cover_image_base64 = body.get('coverImage')
 
         if not title or not file_name or not file_content_base64 or not artist_ids or not genres:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "title, fileName, fileContent, artistIds, and genres are required"})
-            }
+            return response(400, {
+                "error": "title, fileName, fileContent, artistIds, and genres are required"
+            })
 
         # Decode and upload audio file
         file_bytes = base64.b64decode(file_content_base64)
@@ -48,13 +62,13 @@ def lambda_handler(event, context):
             s3.put_object(Bucket=S3_BUCKET, Key=cover_key, Body=base64.b64decode(cover_image_base64))
             cover_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{cover_key}"
 
-        # Save metadata to DynamoDB for each genre (genre = partition key, title = sort key)
+        # Save metadata to DynamoDB for each genre
         music_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
         for genre in genres:
             music_item = {
-                "genre": genre,   # Partition key
-                "musicId": music_id, # Sort key, UUID for reference
+                "genre": genre,
+                "musicId": music_id,
                 "title": title,
                 "fileName": file_name,
                 "fileType": file_name.split('.')[-1],
@@ -68,25 +82,16 @@ def lambda_handler(event, context):
             }
             table.put_item(Item=music_item)
 
-        return {
-            "statusCode": 201,
-            "body": json.dumps({
-                "message": "Music content uploaded successfully",
-                "musicId": music_id,
-                "title": title,
-                "genres": genres,
-                "fileUrl": music_url,
-                "coverUrl": cover_url
-            })
-        }
+        return response(201, {
+            "message": "Music content uploaded successfully",
+            "musicId": music_id,
+            "title": title,
+            "genres": genres,
+            "fileUrl": music_url,
+            "coverUrl": cover_url
+        })
 
     except ClientError as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(500, {"error": str(e)})
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(500, {"error": str(e)})
