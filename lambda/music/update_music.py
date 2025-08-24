@@ -2,9 +2,10 @@ import json
 import boto3
 import os
 import uuid
-from botocore.exceptions import ClientError
-from datetime import datetime
 import base64
+from datetime import datetime
+from botocore.exceptions import ClientError
+import decimal
 
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
@@ -16,15 +17,22 @@ COVERS_FOLDER = os.environ.get('COVERS_FOLDER', 'covers')
 
 table = dynamodb.Table(MUSIC_TABLE)
 
+# Decimal encoder for JSON
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
 def response(status_code, body):
     return {
         "statusCode": status_code,
         "headers": {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Allow-Methods": "OPTIONS,POST"
+            "Access-Control-Allow-Methods": "OPTIONS,POST,PUT"
         },
-        "body": json.dumps(body)
+        "body": json.dumps(body, cls=DecimalEncoder)
     }
 
 def lambda_handler(event, context):
@@ -38,68 +46,62 @@ def lambda_handler(event, context):
         title = body.get('title')
         file_name = body.get('fileName')
         file_content_base64 = body.get('fileContent')
-        genres = body.get('genres', [])
-        artist_ids = body.get('artistIds', [])
-        album_id = body.get('albumId')
         cover_image_base64 = body.get('coverImage')
 
-        if not music_id or not title or not file_name or not file_content_base64 or not genres or not artist_ids:
-            return response(400, {"error": "musicId, title, fileName, fileContent, genres, and artistIds are required"})
+        if not music_id:
+            return response(400, {"error": "musicId is required"})
 
-        # Upload new audio file to S3
-        file_bytes = base64.b64decode(file_content_base64)
-        music_key = f"{MUSIC_FOLDER}/{uuid.uuid4()}-{file_name}"
-        s3.put_object(Bucket=S3_BUCKET, Key=music_key, Body=file_bytes)
-        music_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{music_key}"
+        # Fetch all existing records with this musicId
+        scan_result = table.scan(
+            FilterExpression="musicId = :m",
+            ExpressionAttributeValues={":m": music_id}
+        )
+        existing_items = scan_result.get("Items", [])
 
-        # Optional cover
+        if not existing_items:
+            return response(404, {"error": "No music entry found with given musicId"})
+
+        now = datetime.utcnow().isoformat()
+        music_url = None
         cover_url = None
+
+        # Upload new audio file if provided
+        if file_content_base64 and file_name:
+            file_bytes = base64.b64decode(file_content_base64)
+            music_key = f"{MUSIC_FOLDER}/{uuid.uuid4()}-{file_name}"
+            s3.put_object(Bucket=S3_BUCKET, Key=music_key, Body=file_bytes)
+            music_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{music_key}"
+
+        # Upload new cover image if provided
         if cover_image_base64:
             cover_key = f"{COVERS_FOLDER}/{uuid.uuid4()}-cover.jpg"
             s3.put_object(Bucket=S3_BUCKET, Key=cover_key, Body=base64.b64decode(cover_image_base64))
             cover_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{cover_key}"
 
-        # Scan all partitions for this musicId
-        scan_result = table.scan(
-            FilterExpression="musicId = :m",
-            ExpressionAttributeValues={":m": music_id}
-        )
-        existing_genres = [item["genre"] for item in scan_result.get("Items", [])]
+        # Update each genre entry for the musicId
+        for item in existing_items:
+            genre = item["genre"]
 
-        # Delete from genres that are no longer included
-        for genre in existing_genres:
-            if genre not in genres:
-                table.delete_item(Key={"genre": genre, "musicId": music_id})
-
-        # Update/put items for new genres
-        now = datetime.utcnow().isoformat()
-        for genre in genres:
-            try:
-                existing = table.get_item(Key={"genre": genre, "musicId": music_id})
-                created_at = existing.get("Item", {}).get("createdAt", now)  # fallback to now if not found
-            except Exception:
-                created_at = now
-
-            music_item = {
+            updated_item = {
                 "genre": genre,
                 "musicId": music_id,
-                "title": title,
-                "fileName": file_name,
-                "fileType": file_name.split('.')[-1],
-                "fileSize": len(file_bytes),
-                "createdAt": created_at,
+                "title": title if title is not None else item["title"],
+                "fileName": file_name if file_name is not None else item["fileName"],
+                "fileType": (file_name or item["fileName"]).split('.')[-1],
+                "fileSize": len(base64.b64decode(file_content_base64)) if file_content_base64 else item.get("fileSize", 0),
+                "fileUrl": music_url if music_url is not None else item["fileUrl"],
+                "coverUrl": cover_url if cover_url is not None else item.get("coverUrl"),
+                "albumId": item.get("albumId"),
+                "artistIds": item.get("artistIds", []),
+                "createdAt": item.get("createdAt", now),
                 "updatedAt": now,
-                "artistIds": artist_ids,
-                "albumId": album_id,
-                "fileUrl": music_url,
-                "coverUrl": cover_url
             }
-            table.put_item(Item=music_item)
+
+            table.put_item(Item=updated_item)
 
         return response(200, {
-            "message": "Music item updated successfully",
+            "message": "Music updated successfully",
             "musicId": music_id,
-            "updatedGenres": genres,
             "fileUrl": music_url,
             "coverUrl": cover_url
         })
