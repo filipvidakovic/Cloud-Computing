@@ -21,6 +21,79 @@ class MusicLambdas(Construct):
             environment=env_vars,
             timeout=Duration.seconds(30)
         )
+        # Lambda to get albums by genre
+        self.get_albums_by_genre_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetAlbumsByGenreLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_albums_by_genre.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
 
+        # Lambda to get artists by genre
+        self.get_artists_by_genre_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetArtistsByGenreLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_artists_by_genre.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        # Permissions
+        music_table.grant_read_data(self.get_artists_by_genre_lambda)
+        music_table.grant_read_data(self.get_albums_by_genre_lambda)
         music_table.grant_write_data(self.upload_music_lambda)
         s3_bucket.grant_put(self.upload_music_lambda)
+
+        # Lambda to get music metadata and URL
+        self.get_music_details_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_music_details.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
+        # Permissions
+        music_table.grant_read_data(self.get_music_details_lambda)
+
+        # Lambda for deleting a song
+        self.delete_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_music.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
+        # Permissions
+        music_table.grant_read_write_data(self.delete_music_lambda)
+        s3_bucket.grant_delete(self.delete_music_lambda)
+
+        # Lambda for deleting all songs of an artist
+        self.delete_artist_songs_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteArtistSongsLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_artist_songs.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        music_table.grant_read_write_data(self.delete_artist_songs_lambda)
+        s3_bucket.grant_delete(self.delete_artist_songs_lambda)
+
+        # Lambda for updating music by musicId
+        self.update_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}UpdateMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="update_music.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+        # Permissions
+        music_table.grant_read_write_data(self.update_music_lambda)
+        s3_bucket.grant_put(self.update_music_lambda)
+        s3_bucket.grant_delete(self.update_music_lambda)
+

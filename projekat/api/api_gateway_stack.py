@@ -32,12 +32,59 @@ class ApiGateway(Construct):
             "POST",
             apigw.LambdaIntegration(artist_lambdas.create_artist_lambda)
         )
+        artists_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
+        )
+        artists_resource.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(artist_lambdas.delete_artist_lambda)
+        )
 
         # music content
         music_resource = api.root.add_resource("music")
         music_resource.add_method(
             "POST",
             apigw.LambdaIntegration(music_lambdas.upload_music_lambda)
+        )
+        music_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_music_details_lambda)
+        )
+        music_resource.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(music_lambdas.delete_music_lambda)
+        )
+        music_resource.add_method(
+            "PUT",
+            apigw.LambdaIntegration(music_lambdas.update_music_lambda)
+        )
+        
+        delete_by_artist = music_resource.add_resource("delete-by-artist").add_resource("{artistId}")
+        delete_by_artist.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(music_lambdas.delete_artist_songs_lambda)
+        )
+
+        # discover albums
+        discover_resource = music_resource.add_resource("discover-albums")
+        discover_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
+        )
+
+        # discover artists
+        discover_artists_resource = music_resource.add_resource("discover-artists")
+        discover_artists_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_artists_by_genre_lambda)
+        )
+
+        # get artist
+        artist_resource = artists_resource.add_resource("{artistId}")
+        artist_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
         )
 
         # subscriptions
@@ -54,3 +101,4 @@ class ApiGateway(Construct):
             "DELETE",
             apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
         )
+
