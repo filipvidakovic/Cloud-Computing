@@ -1,27 +1,45 @@
 import os
 import json
 import boto3
+from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["ARTIST_TABLE"])
+table = dynamodb.Table(os.environ["ARTISTS_TABLE"])
 
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "OPTIONS,GET,POST,DELETE"
+        },
+        "body": json.dumps(body)
+    }
 
 def lambda_handler(event, context):
-    # Get artistId from query string
-    artist_id = event.get("queryStringParameters", {}).get("artistId")
+    params = event.get("queryStringParameters", {}) or {}
+    artist_id = params.get("artistId")
 
     if not artist_id:
-        return {"statusCode": 400, "body": json.dumps({"error": "Missing artistId"})}
+        return response(400, {"error": "artistId is required"})
 
-    # Fetch the artist from DynamoDB
-    response = table.get_item(Key={"artistId": artist_id})
-    artist = response.get("Item")
+    response_query = table.query(
+        KeyConditionExpression=Key("artistId").eq(artist_id)
+    )
+    items = response_query.get("Items", [])
 
-    if not artist:
-        return {"statusCode": 404, "body": json.dumps({"error": "Artist not found"})}
+    if not items:
+        return response(404, {"error": "Artist not found"})
 
-    # Return artist info
-    return {
-        "statusCode": 200,
-        "body": json.dumps(artist)
+    first = items[0]
+    artist = {
+        "artistId": artist_id,
+        "name": first["name"],
+        "lastname": first["lastname"],
+        "age": first["age"],
+        "bio": first.get("bio", ""),
+        "genres": [item["genre"] for item in items]
     }
+
+    return response(200, artist)
