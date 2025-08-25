@@ -31,11 +31,28 @@ class ProjekatStack(Stack):
         self.artist_table = dynamodb.Table(
             self, "ArtistTable",
             partition_key=dynamodb.Attribute(
-                name="artistId",
+                name="artistId",  # Partition key
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="genre",  # Sort key
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
         )
+
+        self.artist_table.add_global_secondary_index(
+            index_name="GenreIndex",
+            partition_key=dynamodb.Attribute(
+                name="genre",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="artistId",
+                type=dynamodb.AttributeType.STRING
+            )
+        )
+
         self.music_table = dynamodb.Table(
             self, "MusicTable",
             partition_key=dynamodb.Attribute(
