@@ -27,12 +27,16 @@ class ApiGateway(Construct):
         )
 
         # artists
+
         artists_resource = api.root.add_resource("artists")
         artists_resource.add_method(
             "POST",
             apigw.LambdaIntegration(artist_lambdas.create_artist_lambda)
         )
-        artists_resource.add_method(
+
+        # get artist
+        artist_resource = artists_resource.add_resource("{artistId}")
+        artist_resource.add_method(
             "GET",
             apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
         )
@@ -40,6 +44,12 @@ class ApiGateway(Construct):
             "DELETE",
             apigw.LambdaIntegration(artist_lambdas.delete_artist_lambda)
         )
+        artists_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda)
+        )
+
+
 
         # music content
         music_resource = api.root.add_resource("music")
@@ -67,8 +77,8 @@ class ApiGateway(Construct):
         )
 
         # discover albums
-        discover_resource = music_resource.add_resource("discover-albums")
-        discover_resource.add_method(
+        album_resource = music_resource.add_resource("albums")
+        album_resource.add_method(
             "GET",
             apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
         )
@@ -77,14 +87,7 @@ class ApiGateway(Construct):
         discover_artists_resource = music_resource.add_resource("discover-artists")
         discover_artists_resource.add_method(
             "GET",
-            apigw.LambdaIntegration(music_lambdas.get_artists_by_genre_lambda)
-        )
-
-        # get artist
-        artist_resource = artists_resource.add_resource("{artistId}")
-        artist_resource.add_method(
-            "GET",
-            apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
+            apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda)
         )
 
         # subscriptions

@@ -4,62 +4,68 @@ import os
 import uuid
 from botocore.exceptions import ClientError
 
-dynamodb = boto3.resource('dynamodb')
-ARTISTS_TABLE = os.environ['ARTISTS_TABLE']  # Pass table name via Lambda environment variables
+# Initialize DynamoDB
+dynamodb = boto3.resource("dynamodb")
+ARTISTS_TABLE = os.environ["ARTISTS_TABLE"]
 table = dynamodb.Table(ARTISTS_TABLE)
+
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "OPTIONS,GET,POST,DELETE"
+        },
+        "body": json.dumps(body)
+    }
 
 def lambda_handler(event, context):
     try:
-        body = json.loads(event.get('body', '{}'))
-        name = body.get('name')
-        lastname = body.get('lastname')
-        age = body.get('age')
-        bio = body.get('bio', '')
-        genres = body.get('genres', [])
+        body = json.loads(event.get("body", "{}"))
 
-        if not name or not lastname or not age:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "name, lastname and age are required"})
-            }
+        name = body.get("name")
+        lastname = body.get("lastname")
+        age = body.get("age")
+        bio = body.get("bio", "")
+        genres = body.get("genres", [])
+
+        if not name or not lastname or not age or not genres:
+            return response(400, {"error": "name, lastname, age and at least one genre are required"})
 
         try:
             age = int(age)
         except ValueError:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "age must be a number"})
-            }
+            return response(400, {"error": "age must be a number"})
 
         artist_id = str(uuid.uuid4())
 
-        artist = {
-            "artistId": artist_id,
-            "name": name,
-            "lastname": lastname,
-            "age": int(age),
-            "bio": bio,
-            "genres": genres
-        }
+        # create one item per genre
+        with table.batch_writer() as batch:
+            for genre in genres:
+                item = {
+                    "artistId": artist_id,     # Partition key
+                    "genre": genre,            # Sort key
+                    "name": name,
+                    "lastname": lastname,
+                    "age": age,
+                    "bio": bio
+                }
+                batch.put_item(Item=item)
 
-        table.put_item(Item=artist)
-
-        return {
-            "statusCode": 201,
-            "body": json.dumps({
-                "message": "Artist created successfully",
-                "artist": artist
-            })
-        }
-
+        return response(201, {
+            "message": "Artist created successfully",
+            "artist": {
+                "artistId": artist_id,
+                "name": name,
+                "lastname": lastname,
+                "age": age,
+                "bio": bio,
+                "genres": genres
+            }
+        })
 
     except ClientError as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(500, {"error": str(e)})
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(500, {"error": str(e)})
