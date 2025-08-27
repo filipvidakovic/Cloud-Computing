@@ -17,7 +17,7 @@ class SubscriptionsLambdas(Construct):
         self.subscriptions_lambda = _lambda.Function(
             self, f"{PROJECT_PREFIX}SubscriptionsLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="subscriptions.handler",
+            handler="subscription.lambda_handler",
             code=_lambda.Code.from_asset("lambda/subscriptions"),
             environment=env_vars,
             timeout=Duration.seconds(10)

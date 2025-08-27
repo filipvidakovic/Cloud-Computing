@@ -27,10 +27,10 @@ def lambda_handler(event, context):
 def handle_post(event):
     try:
         body = json.loads(event.get('body', '{}'))
-        user_id = body.get('userId')
-        subscription_type = body.get('type')
-        target_id = body.get('id')
-        action = body.get('action', 'subscribe')
+        user_id = body.get('userId')   # e.g. userId
+        subscription_type = body.get('type')  # e.g. "artist" or "album"
+        target_id = body.get('id')  # e.g. artistId or albumId
+        action = body.get('action', 'subscribe')  # e.g. "subscribe" or "unsubscribe"
 
         if not user_id or not subscription_type or not target_id:
             return response(400, {"error": "userId, type, and id are required"})
@@ -102,6 +102,7 @@ def response(status, body):
 def cors_response():
     """Handle OPTIONS preflight requests."""
     return {
+        "body": {"message": "CORS preflight request"},
         "statusCode": 200,
         "headers": {
             "Access-Control-Allow-Origin": "*",

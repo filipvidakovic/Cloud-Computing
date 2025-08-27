@@ -93,14 +93,15 @@ class ApiGateway(Construct):
         # subscriptions
         subscriptions_resource = api.root.add_resource("subscriptions")
         subscriptions_resource.add_method(
-            "POST",
-            apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
-        )
-        subscriptions_resource.add_method(
             "GET",
             apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
         )
-        subscriptions_resource.add_method(
+        single_subscription = subscriptions_resource.add_resource("{artistId}")
+        single_subscription.add_method(
+            "POST",
+            apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
+        )
+        single_subscription.add_method(
             "DELETE",
             apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda)
         )
