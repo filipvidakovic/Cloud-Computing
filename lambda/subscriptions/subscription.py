@@ -4,6 +4,9 @@ import os
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
 
+from ..get_user_id import get_user_id
+
+
 # Initialize DynamoDB table from environment variable
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['SUBSCRIPTIONS_TABLE'])
@@ -26,11 +29,16 @@ def lambda_handler(event, context):
 
 def handle_post(event):
     try:
-        body = json.loads(event.get('body', '{}'))
-        user_id = body.get('userId')   # e.g. userId
-        subscription_type = body.get('type')  # e.g. "artist" or "album"
-        target_id = body.get('id')  # e.g. artistId or albumId
-        action = body.get('action', 'subscribe')  # e.g. "subscribe" or "unsubscribe"
+        # body = json.loads(event.get('body', '{}'))
+        
+        user_id = get_user_id(event)
+        # subscription_key = event["pathParameters"]["subscriptionKey"]
+        if not user_id:
+            return response(403, {"error": "Unauthorized"})
+        return response(200, {"message": f"Hello, user {user_id}"})
+        subscription_type = body.get('type')
+        target_id = body.get('id')  
+        action = body.get('action', 'subscribe')
 
         if not user_id or not subscription_type or not target_id:
             return response(400, {"error": "userId, type, and id are required"})
@@ -59,7 +67,15 @@ def handle_post(event):
 
 def handle_get(event):
     try:
-        user_id = event.get('queryStringParameters', {}).get('userId')
+        rc = event.get("requestContext", {})
+        print(rc)
+        auth = rc.get("authorizer", {})
+        print(auth)
+        user_id = ""
+        if "claims" in auth:
+            user_id = auth["claims"].get("sub")
+        # user_id = get_user_id(event)
+        print(user_id)
         if not user_id:
             return response(400, {"error": "userId is required"})
 
@@ -71,21 +87,30 @@ def handle_get(event):
         return response(500, {"error": str(e)})
 
 def handle_delete(event):
+    path_params = event.get("pathParameters") or {}
+    artist_id = path_params.get("artistId")
+    if not artist_id:
+        return response(400, {"error": "artistId is required"})
+
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+    user_id = claims.get("sub")
+    if not user_id:
+        return response(403, {"error": "Unauthorized"})
+
+    subscription_id = f"artist#{artist_id}"
+
     try:
-        body = json.loads(event.get('body', '{}'))
-        user_id = body.get('userId')
-        subscription_type = body.get('type')
-        target_id = body.get('id')
+        table.delete_item(
+            Key={
+                "userId": user_id,
+                "subscriptionId": subscription_id
+            },
+            ConditionExpression="attribute_exists(subscriptionId)"
+        )
+    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+        return response(404, {"error": "Subscription not found"})
 
-        if not user_id or not subscription_type or not target_id:
-            return response(400, {"error": "userId, type, and id are required"})
-
-        subscription_key = f"{subscription_type}#{target_id}"
-
-        table.delete_item(Key={"userId": user_id, "subscriptionId": subscription_key})
-        return response(200, {"message": f"Subscription {subscription_key} deleted"})
-    except Exception as e:
-        return response(500, {"error": str(e)})
+    return response(200, {"message": "Unsubscribed successfully"})
 
 def response(status, body):
     """Standard JSON response with CORS."""

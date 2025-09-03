@@ -55,5 +55,22 @@ class AuthLambdas(Construct):
             )
         )
 
+        self.get_user_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetUserLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_user.handler",
+            code=_lambda.Code.from_asset("lambda/auth"),
+            environment=env_vars,
+            timeout=Duration.seconds(10)
+        )
+
+        self.get_user_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["cognito-idp:AdminGetUser"],
+                resources=["*"]
+            )
+        )
+
         user_pool.grant(self.register_lambda, "cognito-idp:SignUp", "cognito-idp:AdminInitiateAuth")
         user_pool.grant(self.login_lambda, "cognito-idp:SignIn", "cognito-idp:AdminInitiateAuth")
+        user_pool.grant(self.get_user_lambda, "cognito-idp:AdminGetUser")

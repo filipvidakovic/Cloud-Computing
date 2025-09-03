@@ -1,5 +1,6 @@
 from aws_cdk import aws_cognito as cognito, RemovalPolicy, CfnOutput
 from constructs import Construct
+from aws_cdk import aws_apigateway as apigw
 from ..config import PROJECT_PREFIX
 
 class CognitoAuth(Construct):
