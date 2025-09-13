@@ -99,4 +99,6 @@ class MusicLambdas(Construct):
 
         # Grant read access to DynamoDB
         music_table.grant_read_data(self.batch_get_music_lambda)
+        s3_bucket.grant_read(self.batch_get_music_lambda)
+
 

@@ -77,3 +77,10 @@ class ApiGateway(Construct):
             "GET",
             apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
         )
+
+        # music/batchGetByGenre  (POST)
+        batch_get = music_resource.add_resource("batchGetByGenre")
+        batch_get.add_method(
+            "POST",
+            apigw.LambdaIntegration(music_lambdas.batch_get_music_lambda)
+        )
