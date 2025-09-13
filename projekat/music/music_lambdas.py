@@ -87,3 +87,18 @@ class MusicLambdas(Construct):
         s3_bucket.grant_put(self.update_music_lambda)
         s3_bucket.grant_delete(self.update_music_lambda)
 
+        # Lambda to batch get music by genre+ids
+        self.batch_get_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}BatchGetMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_music_batch_by_genre.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars,
+            timeout=Duration.seconds(30)
+        )
+
+        # Grant read access to DynamoDB
+        music_table.grant_read_data(self.batch_get_music_lambda)
+        s3_bucket.grant_read(self.batch_get_music_lambda)
+
+

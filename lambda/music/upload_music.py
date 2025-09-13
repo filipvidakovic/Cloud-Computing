@@ -5,6 +5,7 @@ import uuid
 from botocore.exceptions import ClientError
 from datetime import datetime
 import base64
+import mimetypes
 
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
@@ -50,16 +51,17 @@ def lambda_handler(event, context):
             })
 
         # Decode and upload audio file
+        content_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
         file_bytes = base64.b64decode(file_content_base64)
         music_key = f"{MUSIC_FOLDER}/{uuid.uuid4()}-{file_name}"
-        s3.put_object(Bucket=S3_BUCKET, Key=music_key, Body=file_bytes)
+        s3.put_object(Bucket=S3_BUCKET, Key=music_key, Body=file_bytes, ContentType=content_type)
         music_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{music_key}"
 
         # Optional cover image
         cover_url = None
         if cover_image_base64:
             cover_key = f"{COVERS_FOLDER}/{uuid.uuid4()}-cover.jpg"
-            s3.put_object(Bucket=S3_BUCKET, Key=cover_key, Body=base64.b64decode(cover_image_base64))
+            s3.put_object(Bucket=S3_BUCKET, Key=cover_key, Body=base64.b64decode(cover_image_base64), ContentType="image/jpeg")
             cover_url = f"https://{S3_BUCKET}.s3.amazonaws.com/{cover_key}"
 
         # Save metadata to DynamoDB for each genre
