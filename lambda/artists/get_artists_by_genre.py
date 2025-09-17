@@ -36,8 +36,6 @@ def lambda_handler(event, context):
     )
     items = resp.get("Items", [])
 
-    if not items:
-        return response(404, {"error": f"No artists found for genre '{genre}'"})
 
     # group by artistId and merge genres
     artists_map = {}
