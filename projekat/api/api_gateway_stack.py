@@ -65,8 +65,6 @@ class ApiGateway(Construct):
         artists_resource.add_method(
             "GET",
             apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda),
-            authorization_type=apigw.AuthorizationType.COGNITO,
-            authorizer=authorizer
         )
 
 
