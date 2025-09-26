@@ -11,11 +11,13 @@ dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
 
 MUSIC_TABLE = os.environ['MUSIC_TABLE']
+ARTIST_INFO_TABLE = os.environ['ARTIST_INFO_TABLE']
 S3_BUCKET = os.environ['S3_BUCKET']
 MUSIC_FOLDER = os.environ.get('MUSIC_FOLDER', 'music')
 COVERS_FOLDER = os.environ.get('COVERS_FOLDER', 'covers')
 
 table = dynamodb.Table(MUSIC_TABLE)
+artist_info_table = dynamodb.Table(ARTIST_INFO_TABLE)
 
 def response(status_code, body):
     return {
@@ -83,6 +85,18 @@ def lambda_handler(event, context):
                 "coverUrl": cover_url
             }
             table.put_item(Item=music_item)
+
+
+        # Updates each artist with new song
+        for artist_id in artist_ids:
+            artist_info_table.update_item(
+                Key={"artistId": artist_id},
+                UpdateExpression="SET songs = list_append(if_not_exists(songs, :empty), :s)",
+                ExpressionAttributeValues={
+                    ":s": [music_id],
+                    ":empty": []
+                }
+            )
 
         return response(201, {
             "message": "Music content uploaded successfully",
