@@ -1,21 +1,18 @@
-import json
-import boto3
-import os
-import uuid
+import json, os, uuid, boto3, time
 from botocore.exceptions import ClientError
 
-# Initialize DynamoDB
 dynamodb = boto3.resource("dynamodb")
+client = boto3.client("dynamodb")  # needed for transact_write_items
 ARTISTS_TABLE = os.environ["ARTISTS_TABLE"]
-table = dynamodb.Table(ARTISTS_TABLE)
+ARTIST_INFO_TABLE = os.environ["ARTIST_INFO_TABLE"]
 
-def response(status_code, body):
+def response(status, body):
     return {
-        "statusCode": status_code,
+        "statusCode": status,
         "headers": {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Allow-Methods": "OPTIONS,GET,POST,DELETE"
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE"
         },
         "body": json.dumps(body)
     }
@@ -23,14 +20,13 @@ def response(status_code, body):
 def lambda_handler(event, context):
     try:
         body = json.loads(event.get("body", "{}"))
-
         name = body.get("name")
         lastname = body.get("lastname")
         age = body.get("age")
         bio = body.get("bio", "")
         genres = body.get("genres", [])
 
-        if not name or not lastname or not age or not genres:
+        if not name or not lastname or age is None or not genres:
             return response(400, {"error": "name, lastname, age and at least one genre are required"})
 
         try:
@@ -40,21 +36,42 @@ def lambda_handler(event, context):
 
         artist_id = str(uuid.uuid4())
 
-        # create one item per genre
-        with table.batch_writer() as batch:
-            for genre in genres:
-                item = {
-                    "artistId": artist_id,     # Partition key
-                    "genre": genre,            # Sort key
-                    "name": name,
-                    "lastname": lastname,
-                    "age": age,
-                    "bio": bio
+        transact_items = []
+
+        # 1) profile in ArtistInfoTable
+        transact_items.append({
+            "Put": {
+                "TableName": ARTIST_INFO_TABLE,
+                "Item": {
+                    "artistId": {"S": artist_id},
+                    "name": {"S": name},
+                    "lastname": {"S": lastname},
+                    "age": {"N": str(age)},
+                    "bio": {"S": bio},
+                    "genres": {"L": [{"S": g} for g in genres]}
+                },
+                # prevent accidental overwrite of existing ID
+                "ConditionExpression": "attribute_not_exists(artistId)"
+            }
+        })
+
+        # (artist, genre) in ArtistTable
+        for g in genres:
+            transact_items.append({
+                "Put": {
+                    "TableName": ARTISTS_TABLE,
+                    "Item": {
+                        "artistId": {"S": artist_id},
+                        "genre": {"S": g}
+                    }
                 }
-                batch.put_item(Item=item)
+            })
+
+        # commit everything together
+        client.transact_write_items(TransactItems=transact_items)
 
         return response(201, {
-            "message": "Artist created successfully",
+            "message": "Artist created",
             "artist": {
                 "artistId": artist_id,
                 "name": name,

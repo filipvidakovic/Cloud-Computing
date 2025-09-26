@@ -16,6 +16,7 @@ from aws_cdk import aws_s3 as s3
 
 from projekat.music.music_lambdas import MusicLambdas
 from projekat.subscriptions.subscriptions_table import SubscriptionsTableStack
+from projekat.user.user_lambdas import UserLambdas
 
 
 class ProjekatStack(Stack):
@@ -55,6 +56,15 @@ class ProjekatStack(Stack):
             )
         )
 
+        self.artist_info_table = dynamodb.Table(
+            self, "ArtistInfoTable",
+            partition_key=dynamodb.Attribute(
+                name="artistId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
+        )
+
         self.music_table = dynamodb.Table(
             self, "MusicTable",
             partition_key=dynamodb.Attribute(
@@ -70,15 +80,46 @@ class ProjekatStack(Stack):
 
         self.subscriptions_table = SubscriptionsTableStack(self, "SubscriptionsTable")
 
+        #listening history
+        self.user_history_table = dynamodb.Table(
+            self, "UserHistoryTable",
+            partition_key=dynamodb.Attribute(
+                name="userId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
+        )
+        #feed
+        user_feed_table = dynamodb.Table(
+            self,
+            "UserFeedTable",
+            partition_key=dynamodb.Attribute(
+                name="userId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="musicId",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+        )
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, s3_bucket=self.music_bucket)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket)
         subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
-        artist_lambdas = ArtistLambdas(self, "ArtistLambdas", artist_table=self.artist_table, delete_artist_songs_lambda=music_lambdas.delete_artist_songs_lambda)
+        artist_lambdas = ArtistLambdas(
+            self, "ArtistLambdas",
+            artist_table=self.artist_table,
+            artist_info_table=self.artist_info_table,
+            delete_artist_songs_lambda=music_lambdas.delete_artist_songs_lambda
+        )
+        user_lambdas = UserLambdas(self, "UserLambdas", user_history_table=self.user_history_table)
+
         ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", 
                    auth_lambdas=auth_lambdas, 
                    artist_lambdas=artist_lambdas, 
                    music_lambdas=music_lambdas, 
                    subscription_lambdas=subscription_lambdas, 
-                   cognito=cognito)
+                   cognito=cognito,
+                   user_lambdas=user_lambdas)
 
