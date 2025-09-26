@@ -4,11 +4,12 @@ from constructs import Construct
 from ..config import PROJECT_PREFIX
 
 class ArtistLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, artist_table, delete_artist_songs_lambda):
+    def __init__(self, scope: Construct, id: str, artist_table, artist_info_table, delete_artist_songs_lambda):
         super().__init__(scope, id)
 
         env_vars = {
             "ARTISTS_TABLE": artist_table.table_name,
+            "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "GENRE_INDEX": "GenreIndex",
         }
 
@@ -46,6 +47,7 @@ class ArtistLambdas(Construct):
             code=_lambda.Code.from_asset("lambda/artists"),
             environment={
                 "ARTISTS_TABLE": artist_table.table_name,
+                "ARTIST_INFO_TABLE": artist_info_table.table_name,
                 "DELETE_SONGS_FUNCTION": delete_artist_songs_lambda.function_name
             },
             timeout=Duration.seconds(10)
@@ -55,4 +57,10 @@ class ArtistLambdas(Construct):
         artist_table.grant_read_data(self.get_artists_by_genre_lambda)
         artist_table.grant_write_data(self.create_artist_lambda)
         artist_table.grant_read_write_data(self.delete_artist_lambda)
+
+        artist_info_table.grant_read_data(self.get_artist_lambda)
+        artist_info_table.grant_read_data(self.get_artists_by_genre_lambda)
+        artist_info_table.grant_write_data(self.create_artist_lambda)
+        artist_info_table.grant_read_write_data(self.delete_artist_lambda)
+
         delete_artist_songs_lambda.grant_invoke(self.delete_artist_lambda)

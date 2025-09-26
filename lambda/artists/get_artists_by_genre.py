@@ -10,46 +10,68 @@ def decimal_default(obj):
     raise TypeError
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["ARTISTS_TABLE"])
+client = boto3.client("dynamodb")
+
+artist_table = dynamodb.Table(os.environ["ARTISTS_TABLE"])
+info_table_name = os.environ["ARTIST_INFO_TABLE"]
 
 def response(status_code, body):
     return {
         "statusCode": status_code,
         "headers": {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
             "Access-Control-Allow-Methods": "OPTIONS,GET,POST,DELETE"
         },
         "body": json.dumps(body, default=decimal_default)
     }
 
 def lambda_handler(event, context):
-    params = event.get("queryStringParameters", {}) or {}
-    genre = params.get("genre")
+    try:
+        params = event.get("queryStringParameters", {}) or {}
+        genre = params.get("genre")
 
-    if not genre:
-        return response(400, {"error": "genre is required"})
-    #query GSI for genre
-    resp = table.query(
-        IndexName="GenreIndex",
-        KeyConditionExpression=Key("genre").eq(genre)
-    )
-    items = resp.get("Items", [])
+        if not genre:
+            return response(400, {"error": "genre is required"})
 
+        # get artist ids for given genre
+        resp = artist_table.query(
+            IndexName="GenreIndex",
+            KeyConditionExpression=Key("genre").eq(genre),
+            ProjectionExpression="artistId"
+        )
+        items = resp.get("Items", [])
+        artist_ids = list({it["artistId"] for it in items})
 
-    # group by artistId and merge genres
-    artists_map = {}
-    for item in items:
-        aid = item["artistId"]
-        if aid not in artists_map:
-            artists_map[aid] = {
-                "artistId": aid,
-                "name": item["name"],
-                "lastname": item["lastname"],
-                "age": item["age"],
-                "bio": item.get("bio", ""),
-                "genres": []
-            }
-        artists_map[aid]["genres"].append(item["genre"])
+        if not artist_ids:
+            return response(200, {"artists": []})
 
-    return response(200, list(artists_map.values()))
+        # get artist profiles from ArtistInfoTable
+        def chunks(lst, n=100):
+            for i in range(0, len(lst), n):
+                yield lst[i:i+n]
+
+        artists = []
+        for chunk in chunks(artist_ids):
+            resp = client.batch_get_item(
+                RequestItems={
+                    info_table_name: {
+                        "Keys": [{"artistId": {"S": aid}} for aid in chunk]
+                    }
+                }
+            )
+            profiles = resp["Responses"].get(info_table_name, [])
+            for p in profiles:
+                artists.append({
+                    "artistId": p["artistId"]["S"],
+                    "name": p["name"]["S"],
+                    "lastname": p["lastname"]["S"],
+                    "age": int(p["age"]["N"]),
+                    "bio": p.get("bio", {}).get("S", ""),
+                    "genres": [g["S"] for g in p.get("genres", {}).get("L", [])]
+                })
+
+        return response(200, {"artists": artists})
+
+    except Exception as e:
+        return response(500, {"error": str(e)})
