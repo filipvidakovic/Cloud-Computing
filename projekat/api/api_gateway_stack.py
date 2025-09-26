@@ -6,12 +6,13 @@ from projekat.auth.auth_lambda import AuthLambdas
 from projekat.auth.cognito_stack import CognitoAuth
 from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from ..config import PROJECT_PREFIX
+from ..user.user_lambdas import UserLambdas
 from ..music import music_lambdas
 import aws_cdk
 
 
 class ApiGateway(Construct):
-    def __init__(self, scope: Construct, id: str, auth_lambdas: AuthLambdas, artist_lambdas: ArtistLambdas, music_lambdas: music_lambdas.MusicLambdas, subscription_lambdas: SubscriptionsLambdas, cognito: CognitoAuth):
+    def __init__(self, scope: Construct, id: str, auth_lambdas: AuthLambdas, artist_lambdas: ArtistLambdas, music_lambdas: music_lambdas.MusicLambdas, subscription_lambdas: SubscriptionsLambdas, cognito: CognitoAuth,user_lambdas: UserLambdas):
         super().__init__(scope, id)
         api = apigw.RestApi(
             self,
@@ -44,6 +45,13 @@ class ApiGateway(Construct):
         user_resource.add_resource("{userId}").add_method(
             "GET", apigw.LambdaIntegration(auth_lambdas.get_user_lambda),
         )
+        record_play_resource = api.root.add_resource("record-play")
+        record_play_resource.add_method(
+            "POST",
+            apigw.LambdaIntegration(user_lambdas.record_play_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
         # artists
 
         artists_resource = api.root.add_resource("artists")
@@ -58,10 +66,11 @@ class ApiGateway(Construct):
             "GET",
             apigw.LambdaIntegration(artist_lambdas.get_artist_lambda)
         )
-        artists_resource.add_method(
+        artist_resource.add_method(
             "DELETE",
             apigw.LambdaIntegration(artist_lambdas.delete_artist_lambda)
         )
+
         artists_resource.add_method(
             "GET",
             apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda),
@@ -101,12 +110,6 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
         )
 
-        # discover artists
-        discover_artists_resource = music_resource.add_resource("discover-artists")
-        discover_artists_resource.add_method(
-            "GET",
-            apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda)
-        )
 
         # subscriptions
         subscriptions_resource = api.root.add_resource("subscriptions")
