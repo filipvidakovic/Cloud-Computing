@@ -4,13 +4,14 @@ from ..config import PROJECT_PREFIX
 from aws_cdk import Duration
 
 class MusicLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, music_table,artist_info_table, s3_bucket):
+    def __init__(self, scope: Construct, id: str, music_table,artist_info_table, s3_bucket, rates_table):
         super().__init__(scope, id)
 
         env_vars = {
             "MUSIC_TABLE": music_table.table_name,
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "S3_BUCKET": s3_bucket.bucket_name,
+            "RATES_TABLE": rates_table.table_name
         }
 
         # Lambda to upload music

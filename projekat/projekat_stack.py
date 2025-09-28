@@ -10,6 +10,8 @@ from projekat.api.api_gateway_stack import ApiGateway
 from projekat.artists.artists_lambdas import ArtistLambdas
 from projekat.auth.auth_lambda import AuthLambdas
 from projekat.auth.cognito_stack import CognitoAuth
+from projekat.rates.rate_lambdas import RateLambdas
+from projekat.rates.rate_table import RatesTable
 from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from projekat.config import PROJECT_PREFIX
 from aws_cdk import aws_s3 as s3
@@ -103,10 +105,13 @@ class ProjekatStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
         )
+
+        rates_table = RatesTable(self, f"{PROJECT_PREFIX}RatesTable").table
+        rate_lambdas = RateLambdas(self, f"{PROJECT_PREFIX}RateLambdas", rates_table)
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket)
-        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket, rates_table=rates_table)
+        subscription_lambdas = SubscriptionsLambdas(self, f"{PROJECT_PREFIX}SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
         artist_lambdas = ArtistLambdas(
             self, "ArtistLambdas",
             artist_table=self.artist_table,
@@ -121,5 +126,7 @@ class ProjekatStack(Stack):
                    music_lambdas=music_lambdas, 
                    subscription_lambdas=subscription_lambdas, 
                    cognito=cognito,
-                   user_lambdas=user_lambdas)
+                   user_lambdas=user_lambdas,
+                   rate_lambdas=rate_lambdas
+        )
 
