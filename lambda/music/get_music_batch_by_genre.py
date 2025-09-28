@@ -6,16 +6,18 @@ from botocore.exceptions import ClientError
 from urllib.parse import urlparse
 from boto3.dynamodb.types import TypeDeserializer
 
+# --- AWS clients/resources ---
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["MUSIC_TABLE"])
-rate_table = dynamodb.Table(os.environ["RATES_TABLE"])
-ddb = boto3.client("dynamodb")  # <-- use client for batch_get_item
+ddb = boto3.client("dynamodb")          # low-level client
 s3c = boto3.client("s3")
 
+# --- Env ---
 SONG_TABLE = os.environ["SONG_TABLE"]   # PK: musicId
+RATES_TABLE = os.environ["RATES_TABLE"] # PK: userId, SK: musicId
 S3_BUCKET  = os.environ["S3_BUCKET"]
 
 song_table = dynamodb.Table(SONG_TABLE)
+rate_table = dynamodb.Table(RATES_TABLE)
 _deser = TypeDeserializer()
 
 # --- JSON Decimal encoder ---
@@ -31,7 +33,7 @@ def response(status_code, body):
         "headers": {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+            "Access-Control-Allow-Methods": "OPTIONS,POST",
         },
         "body": json.dumps(body, cls=DecimalEncoder, ensure_ascii=False),
     }
@@ -41,7 +43,8 @@ def _extract_key_from_url(u: str | None) -> str | None:
         return None
     p = urlparse(u)
     path = (p.path or "").lstrip("/")
-    # Handle both virtual-hosted and path-style URLs
+
+    # virtual-hosted or path-style
     if p.netloc.startswith(f"{S3_BUCKET}.") or p.netloc == S3_BUCKET:
         return path or None
     if path.startswith(f"{S3_BUCKET}/"):
@@ -56,43 +59,57 @@ def _presign_from_full_url(u: str | None, expires: int = 3600) -> str | None:
         "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=expires
     )
 
+def _unmarshal(av_item: dict) -> dict:
+    return {k: _deser.deserialize(v) for k, v in av_item.items()}
+
 def get_user_id(event):
     rc = event.get("requestContext", {})
     auth = rc.get("authorizer", {})
-    if "claims" in auth:   
+    # Cognito/Lambda authorizer (REQUEST) with JWT claims
+    if "claims" in auth:
         return auth["claims"].get("sub")
     return None
 
-def batch_get_rates(user_id: str, music_ids: list[str]) -> dict[str, str | None]:
-    """Fetch rates from Rates table for a user/musicIds."""
-    if not user_id:
+def batch_get_rates(user_id: str | None, music_ids: list[str]) -> dict[str, str | None]:
+    """
+    Batch-get user rates for given musicIds from RATES_TABLE.
+    Uses the low-level client and unmarshals results.
+    """
+    if not user_id or not music_ids:
         return {}
 
     CHUNK = 100
-    rates = {}
-    
+    out: dict[str, str | None] = {}
+
     for i in range(0, len(music_ids), CHUNK):
-        keys = [{"userId": user_id, "musicId": mid} for mid in music_ids[i:i+CHUNK]]
-        request = {rate_table.name: {"Keys": keys}}
+        key_chunk = music_ids[i:i+CHUNK]
+        req = {
+            rate_table.name: {
+                "Keys": [
+                    {"userId": {"S": user_id}, "musicId": {"S": mid}}
+                    for mid in key_chunk
+                ]
+            }
+        }
+        # retry UnprocessedKeys up to 5x
         for _ in range(5):
-            res = dynamodb.batch_get_item(RequestItems=request)
+            res = ddb.batch_get_item(RequestItems=req)
             items = res.get("Responses", {}).get(rate_table.name, [])
-            for it in items:
+            for av in items:
+                it = _unmarshal(av)
                 mid = it.get("musicId")
-                rate = it.get("rate")
                 if mid:
-                    rates[mid] = rate  # store even if None
+                    out[mid] = it.get("rate")  # may be None
 
             unp = res.get("UnprocessedKeys", {})
             if not unp or not unp.get(rate_table.name, {}).get("Keys"):
                 break
-            request = unp
+            req = unp
 
-    return rates
-def _unmarshal(av_item: dict) -> dict:
-    return {k: _deser.deserialize(v) for k, v in av_item.items()}
+    return out
 
 def lambda_handler(event, context):
+    # CORS preflight
     if event.get("httpMethod") == "OPTIONS":
         return response(200, {})
 
@@ -101,15 +118,12 @@ def lambda_handler(event, context):
 
     try:
         body = json.loads(event.get("body") or "{}")
-        genre = body.get("genre")
         music_ids = body.get("musicIds")
 
-        if not isinstance(genre, str) or not genre.strip():
-            return response(400, {"error": "genre (non-empty string) is required"})
         if not isinstance(music_ids, list) or not music_ids:
             return response(400, {"error": "musicIds (non-empty array) is required"})
 
-        # clean ids
+        # Clean & dedupe IDs (preserve order)
         seen, clean_ids = set(), []
         for mid in music_ids:
             s = str(mid).strip()
@@ -119,11 +133,9 @@ def lambda_handler(event, context):
         if not clean_ids:
             return response(400, {"error": "No valid musicIds after cleaning"})
 
-        # batch-get from MUSIC_TABLE
-        # Projection from SONG_TABLE
+        # ---- Batch-get songs from SONG_TABLE via client ----
         projection = (
-            "#mid, #title, #aids, #alb, #furl, #curl, #fname, #ftype, #fsize, "
-            "#created, #updated, #genres"
+            "#mid,#title,#aids,#alb,#furl,#curl,#fname,#ftype,#fsize,#created,#updated,#genres"
         )
         expr_names = {
             "#mid": "musicId",
@@ -140,9 +152,8 @@ def lambda_handler(event, context):
             "#genres": "genres",
         }
 
-        found_by_id = {}
-        CHUNK = 100
         found_by_id: dict[str, dict] = {}
+        CHUNK = 100
 
         for i in range(0, len(clean_ids), CHUNK):
             keys = [{"musicId": {"S": mid}} for mid in clean_ids[i:i+CHUNK]]
@@ -151,11 +162,8 @@ def lambda_handler(event, context):
                     "Keys": keys,
                     "ProjectionExpression": projection,
                     "ExpressionAttributeNames": expr_names,
-                    # "ConsistentRead": True,  # enable if you need it
                 }
             }
-
-            # Retry up to 5 times
             for _ in range(5):
                 res = ddb.batch_get_item(RequestItems=request)
                 raw_items = res.get("Responses", {}).get(song_table.name, [])
@@ -163,25 +171,22 @@ def lambda_handler(event, context):
                     item = _unmarshal(av_item)
                     mid = item.get("musicId")
                     if mid:
-                        found_by_id[mid] = it
+                        found_by_id[mid] = item
                 unp = res.get("UnprocessedKeys", {})
                 if not unp or not unp.get(song_table.name, {}).get("Keys"):
                     break
                 request = unp
 
-        # get rates for this user
+        # ---- Rates for this user (optional) ----
         user_id = get_user_id(event)
         rates = batch_get_rates(user_id, clean_ids)
 
-        # Build response
-        # Build response in the same order as input IDs
+        # ---- Build response in requested order ----
         songs = []
         for mid in clean_ids:
             it = found_by_id.get(mid)
             if not it:
                 continue
-            file_url  = _presign_from_full_url(it.get("fileUrl"))
-            cover_url = _presign_from_full_url(it.get("coverUrl")) or it.get("coverUrl")
             songs.append({
                 "musicId": mid,
                 "title": it.get("title"),
@@ -193,9 +198,9 @@ def lambda_handler(event, context):
                 "fileType": it.get("fileType"),
                 "fileSize": it.get("fileSize"),
                 "createdAt": it.get("createdAt"),
-                "rate": rates.get(mid, None),
                 "updatedAt": it.get("updatedAt"),
                 "genres": it.get("genres", []),
+                "rate": rates.get(mid),
             })
 
         return response(200, songs)
@@ -204,6 +209,6 @@ def lambda_handler(event, context):
         msg = e.response.get("Error", {}).get("Message", str(e))
         return response(500, {"error": f"AWS error: {msg}"})
     except Exception as e:
+        # Log to CloudWatch via print; API GW surfaces 502 on unhandled exceptions
+        print("Unhandled error:", repr(e))
         return response(500, {"error": str(e)})
-    except BaseException as e:
-        return response(500, {"error": "Unknown error occurred"})
