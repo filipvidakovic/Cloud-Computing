@@ -1,5 +1,8 @@
-import os, json, boto3, uuid
+import os, json, boto3
 from datetime import datetime
+
+dynamodb = boto3.resource("dynamodb")
+table = dynamodb.Table(os.environ["RATES_TABLE"])
 
 def get_user_id(event):
     rc = event.get("requestContext", {})
@@ -8,19 +11,29 @@ def get_user_id(event):
         return auth["claims"].get("sub")
     return None
 
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["RATES_TABLE"])
+def build_response(status, body=""):
+    return {
+        "statusCode": status,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",  # for dev; restrict in prod
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE",
+        },
+        "body": json.dumps(body) if body else ""
+    }
 
 def lambda_handler(event, context):
+    # Handle preflight CORS
+    if event.get("httpMethod") == "OPTIONS":
+        return build_response(200)
+
     body = json.loads(event.get("body", "{}"))
     user_id = get_user_id(event)
     music_id = body.get("musicId")
     rate = body.get("rate")  # "love" | "like" | "dislike"
-    print(event)
-    print(f"USER_ID: {user_id}, MUSIC_ID: {music_id}, RATE: {rate}")
 
     if not user_id or not music_id or rate not in ["love", "like", "dislike"]:
-        return {"statusCode": 400, "body": json.dumps({"error": "Invalid input"})}
+        return build_response(400, {"error": "Invalid input"})
 
     now = datetime.utcnow().isoformat()
     table.put_item(Item={
@@ -31,4 +44,4 @@ def lambda_handler(event, context):
         "updatedAt": now
     })
 
-    return {"statusCode": 201, "body": json.dumps({"message": "Rate saved"})}
+    return build_response(201, {"message": "Rate saved"})

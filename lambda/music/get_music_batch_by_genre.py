@@ -12,10 +12,6 @@ rate_table = dynamodb.Table(os.environ["RATES_TABLE"])
 s3c = boto3.client("s3")
 S3_BUCKET = os.environ["S3_BUCKET"]
 
-COGNITO_REGION = os.environ.get("COGNITO_REGION", "eu-central-1")
-USERPOOL_ID = os.environ.get("USERPOOL_ID", "eu-central-1_xxxxxxxx")
-CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID")
-
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, decimal.Decimal):
@@ -56,14 +52,14 @@ def get_user_id(event):
         return auth["claims"].get("sub")
     return None
 
-def batch_get_reactions(user_id: str, music_ids: list[str]) -> dict[str, str]:
-    """Fetch reactions from Rates table for given user/musicIds."""
+def batch_get_rates(user_id: str, music_ids: list[str]) -> dict[str, str | None]:
+    """Fetch rates from Rates table for a user/musicIds."""
     if not user_id:
         return {}
 
     CHUNK = 100
-    reactions = {}
-
+    rates = {}
+    
     for i in range(0, len(music_ids), CHUNK):
         keys = [{"userId": user_id, "musicId": mid} for mid in music_ids[i:i+CHUNK]]
         request = {rate_table.name: {"Keys": keys}}
@@ -72,19 +68,18 @@ def batch_get_reactions(user_id: str, music_ids: list[str]) -> dict[str, str]:
             items = res.get("Responses", {}).get(rate_table.name, [])
             for it in items:
                 mid = it.get("musicId")
-                reaction = it.get("reaction")  # assuming column name = reaction
-                if mid and reaction:
-                    reactions[mid] = reaction
+                rate = it.get("rate")
+                if mid:
+                    rates[mid] = rate  # store even if None
 
             unp = res.get("UnprocessedKeys", {})
             if not unp or not unp.get(rate_table.name, {}).get("Keys"):
                 break
             request = unp
 
-    return reactions
+    return rates
 
 def lambda_handler(event, context):
-    # CORS preflight
     if event.get("httpMethod") == "OPTIONS":
         return response(200, {})
 
@@ -152,9 +147,9 @@ def lambda_handler(event, context):
                     break
                 request = unp
 
-        # get reactions for this user
+        # get rates for this user
         user_id = get_user_id(event)
-        reactions = batch_get_reactions(user_id, clean_ids)
+        rates = batch_get_rates(user_id, clean_ids)
 
         # Build response
         songs = []
@@ -162,22 +157,19 @@ def lambda_handler(event, context):
             it = found_by_id.get(mid)
             if not it:
                 continue
-            file_url = _presign_from_full_url(it.get("fileUrl"))
-            cover_url = _presign_from_full_url(it.get("coverUrl")) or it.get("coverUrl")
-
             songs.append({
                 "musicId": mid,
                 "title": it.get("title"),
                 "genre": it.get("genre"),
                 "artistIds": it.get("artistIds", []),
                 "albumId": it.get("albumId"),
-                "fileUrl": file_url,
-                "coverUrl": cover_url,
+                "fileUrl": _presign_from_full_url(it.get("fileUrl")),
+                "coverUrl": _presign_from_full_url(it.get("coverUrl")) or it.get("coverUrl"),
                 "fileName": it.get("fileName"),
                 "fileType": it.get("fileType"),
                 "fileSize": it.get("fileSize"),
                 "createdAt": it.get("createdAt"),
-                "reaction": reactions.get(mid, None),  # 👈 love/like/dislike/null
+                "rate": rates.get(mid, None),
             })
 
         return response(200, songs)
@@ -187,3 +179,5 @@ def lambda_handler(event, context):
         return response(500, {"error": f"AWS error: {msg}"})
     except Exception as e:
         return response(500, {"error": str(e)})
+    except BaseException as e:
+        return response(500, {"error": "Unknown error occurred"})

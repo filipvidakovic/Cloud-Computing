@@ -10,14 +10,28 @@ def get_user_id(event):
         return auth["claims"].get("sub")
     return None
 
+def build_response(status, body=""):
+    return {
+        "statusCode": status,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE",
+        },
+        "body": json.dumps(body) if body else ""
+    }
+
 def lambda_handler(event, context):
+    if event.get("httpMethod") == "OPTIONS":
+        return build_response(200)
+
     body = json.loads(event.get("body", "{}"))
     user_id = get_user_id(event)
     music_id = body.get("musicId")
 
     if not user_id or not music_id:
-        return {"statusCode": 400, "body": json.dumps({"error": "userId and musicId are required"})}
+        return build_response(400, {"error": "userId and musicId are required"})
 
     table.delete_item(Key={"userId": user_id, "musicId": music_id})
 
-    return {"statusCode": 200, "body": json.dumps({"message": "Rate deleted"})}
+    return build_response(200, {"message": "Rate deleted"})

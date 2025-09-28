@@ -10,14 +10,28 @@ def get_user_id(event):
         return auth["claims"].get("sub")
     return None
 
+def build_response(status, body=""):
+    return {
+        "statusCode": status,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE",
+        },
+        "body": json.dumps(body) if body else ""
+    }
+
 def lambda_handler(event, context):
+    if event.get("httpMethod") == "OPTIONS":
+        return build_response(200)
+
     user_id = get_user_id(event)
     if not user_id:
-        return {"statusCode": 400, "body": json.dumps({"error": "userId is required"})}
+        return build_response(400, {"error": "userId is required"})
 
     resp = table.query(
         KeyConditionExpression="userId = :u",
         ExpressionAttributeValues={":u": user_id}
     )
 
-    return {"statusCode": 200, "body": json.dumps(resp.get("Items", []))}
+    return build_response(200, resp.get("Items", []))

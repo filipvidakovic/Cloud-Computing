@@ -9,7 +9,7 @@ class RatesTable(Construct):
         super().__init__(scope, id)
 
         self.table = dynamodb.Table(
-            self, f"{PROJECT_PREFIX}RatesTable",
+            self, f"{PROJECT_PREFIX}RatesTableNew",
             partition_key=dynamodb.Attribute(name="userId", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="musicId", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -18,6 +18,6 @@ class RatesTable(Construct):
         self.table.add_global_secondary_index(
             index_name="MusicIndex",
             partition_key=dynamodb.Attribute(name="musicId", type=dynamodb.AttributeType.STRING),
-            sort_key=dynamodb.Attribute(name="rating", type=dynamodb.AttributeType.NUMBER),
+            sort_key=dynamodb.Attribute(name="rate", type=dynamodb.AttributeType.STRING),
             projection_type=dynamodb.ProjectionType.ALL
         )

@@ -165,5 +165,7 @@ class ApiGateway(Construct):
         batch_get = music_resource.add_resource("batchGetByGenre")
         batch_get.add_method(
             "POST",
-            apigw.LambdaIntegration(music_lambdas.batch_get_music_lambda)
+            apigw.LambdaIntegration(music_lambdas.batch_get_music_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
         )
