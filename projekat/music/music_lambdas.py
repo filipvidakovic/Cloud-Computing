@@ -3,7 +3,7 @@ from constructs import Construct
 from ..config import PROJECT_PREFIX
 
 class MusicLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket):
+    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table):
         super().__init__(scope, id)
 
         # music_table = MUSIC_BY_GENRE_TABLE (genre index)
@@ -13,6 +13,7 @@ class MusicLambdas(Construct):
             "SONG_TABLE": song_table.table_name,
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "S3_BUCKET": s3_bucket.bucket_name,
+            "RATES_TABLE": rates_table.table_name
         }
 
         # ---------- Upload ----------
@@ -102,5 +103,9 @@ class MusicLambdas(Construct):
             environment=env_vars_common,
             timeout=Duration.seconds(30),
         )
+
+        # Grant read access to DynamoDB
+        rates_table.grant_read_data(self.batch_get_music_lambda)
+        music_table.grant_read_data(self.batch_get_music_lambda)
         song_table.grant_read_data(self.batch_get_music_lambda)
         s3_bucket.grant_read(self.batch_get_music_lambda)

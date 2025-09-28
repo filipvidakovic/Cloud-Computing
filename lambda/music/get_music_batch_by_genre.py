@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 from boto3.dynamodb.types import TypeDeserializer
 
 dynamodb = boto3.resource("dynamodb")
+table = dynamodb.Table(os.environ["MUSIC_TABLE"])
+rate_table = dynamodb.Table(os.environ["RATES_TABLE"])
 ddb = boto3.client("dynamodb")  # <-- use client for batch_get_item
 s3c = boto3.client("s3")
 
@@ -54,11 +56,43 @@ def _presign_from_full_url(u: str | None, expires: int = 3600) -> str | None:
         "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=expires
     )
 
+def get_user_id(event):
+    rc = event.get("requestContext", {})
+    auth = rc.get("authorizer", {})
+    if "claims" in auth:   
+        return auth["claims"].get("sub")
+    return None
+
+def batch_get_rates(user_id: str, music_ids: list[str]) -> dict[str, str | None]:
+    """Fetch rates from Rates table for a user/musicIds."""
+    if not user_id:
+        return {}
+
+    CHUNK = 100
+    rates = {}
+    
+    for i in range(0, len(music_ids), CHUNK):
+        keys = [{"userId": user_id, "musicId": mid} for mid in music_ids[i:i+CHUNK]]
+        request = {rate_table.name: {"Keys": keys}}
+        for _ in range(5):
+            res = dynamodb.batch_get_item(RequestItems=request)
+            items = res.get("Responses", {}).get(rate_table.name, [])
+            for it in items:
+                mid = it.get("musicId")
+                rate = it.get("rate")
+                if mid:
+                    rates[mid] = rate  # store even if None
+
+            unp = res.get("UnprocessedKeys", {})
+            if not unp or not unp.get(rate_table.name, {}).get("Keys"):
+                break
+            request = unp
+
+    return rates
 def _unmarshal(av_item: dict) -> dict:
     return {k: _deser.deserialize(v) for k, v in av_item.items()}
 
 def lambda_handler(event, context):
-    # CORS preflight
     if event.get("httpMethod") == "OPTIONS":
         return response(200, {})
 
@@ -67,13 +101,15 @@ def lambda_handler(event, context):
 
     try:
         body = json.loads(event.get("body") or "{}")
+        genre = body.get("genre")
         music_ids = body.get("musicIds")
 
-        # Validate input
+        if not isinstance(genre, str) or not genre.strip():
+            return response(400, {"error": "genre (non-empty string) is required"})
         if not isinstance(music_ids, list) or not music_ids:
             return response(400, {"error": "musicIds (non-empty array) is required"})
 
-        # Clean & dedupe IDs, preserve order
+        # clean ids
         seen, clean_ids = set(), []
         for mid in music_ids:
             s = str(mid).strip()
@@ -83,6 +119,7 @@ def lambda_handler(event, context):
         if not clean_ids:
             return response(400, {"error": "No valid musicIds after cleaning"})
 
+        # batch-get from MUSIC_TABLE
         # Projection from SONG_TABLE
         projection = (
             "#mid, #title, #aids, #alb, #furl, #curl, #fname, #ftype, #fsize, "
@@ -103,7 +140,7 @@ def lambda_handler(event, context):
             "#genres": "genres",
         }
 
-        # Batch-get in chunks of 100 with retry for UnprocessedKeys
+        found_by_id = {}
         CHUNK = 100
         found_by_id: dict[str, dict] = {}
 
@@ -126,13 +163,17 @@ def lambda_handler(event, context):
                     item = _unmarshal(av_item)
                     mid = item.get("musicId")
                     if mid:
-                        found_by_id[mid] = item
-
+                        found_by_id[mid] = it
                 unp = res.get("UnprocessedKeys", {})
                 if not unp or not unp.get(song_table.name, {}).get("Keys"):
                     break
-                request = unp  # retry only unprocessed keys
+                request = unp
 
+        # get rates for this user
+        user_id = get_user_id(event)
+        rates = batch_get_rates(user_id, clean_ids)
+
+        # Build response
         # Build response in the same order as input IDs
         songs = []
         for mid in clean_ids:
@@ -146,12 +187,13 @@ def lambda_handler(event, context):
                 "title": it.get("title"),
                 "artistIds": it.get("artistIds", []),
                 "albumId": it.get("albumId"),
-                "fileUrl": file_url,
-                "coverUrl": cover_url,
+                "fileUrl": _presign_from_full_url(it.get("fileUrl")),
+                "coverUrl": _presign_from_full_url(it.get("coverUrl")) or it.get("coverUrl"),
                 "fileName": it.get("fileName"),
                 "fileType": it.get("fileType"),
                 "fileSize": it.get("fileSize"),
                 "createdAt": it.get("createdAt"),
+                "rate": rates.get(mid, None),
                 "updatedAt": it.get("updatedAt"),
                 "genres": it.get("genres", []),
             })
@@ -163,3 +205,5 @@ def lambda_handler(event, context):
         return response(500, {"error": f"AWS error: {msg}"})
     except Exception as e:
         return response(500, {"error": str(e)})
+    except BaseException as e:
+        return response(500, {"error": "Unknown error occurred"})

@@ -4,6 +4,7 @@ from constructs import Construct
 from projekat.artists.artists_lambdas import ArtistLambdas
 from projekat.auth.auth_lambda import AuthLambdas
 from projekat.auth.cognito_stack import CognitoAuth
+from projekat.rates.rate_lambdas import RateLambdas
 from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from ..config import PROJECT_PREFIX
 from ..user.user_lambdas import UserLambdas
@@ -12,7 +13,14 @@ import aws_cdk
 
 
 class ApiGateway(Construct):
-    def __init__(self, scope: Construct, id: str, auth_lambdas: AuthLambdas, artist_lambdas: ArtistLambdas, music_lambdas: music_lambdas.MusicLambdas, subscription_lambdas: SubscriptionsLambdas, cognito: CognitoAuth,user_lambdas: UserLambdas):
+    def __init__(self, scope: Construct, id: str, 
+                 auth_lambdas: AuthLambdas, 
+                 artist_lambdas: ArtistLambdas, 
+                 music_lambdas: music_lambdas.MusicLambdas, 
+                 subscription_lambdas: SubscriptionsLambdas, 
+                 cognito: CognitoAuth,
+                 user_lambdas: UserLambdas,
+                 rate_lambdas: RateLambdas):
         super().__init__(scope, id)
         api = apigw.RestApi(
             self,
@@ -103,6 +111,27 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.delete_artist_songs_lambda)
         )
 
+        # content rates
+        rate_resource = api.root.add_resource("rate")
+        rate_resource.add_method(
+            "POST",
+            apigw.LambdaIntegration(rate_lambdas.create_rate_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        rate_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(rate_lambdas.get_rate_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+        rate_resource.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(rate_lambdas.delete_rate_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+
         # discover albums
         album_resource = music_resource.add_resource("albums")
         album_resource.add_method(
@@ -136,5 +165,7 @@ class ApiGateway(Construct):
         batch_get = music_resource.add_resource("batchGetByIds")
         batch_get.add_method(
             "POST",
-            apigw.LambdaIntegration(music_lambdas.batch_get_music_lambda)
+            apigw.LambdaIntegration(music_lambdas.batch_get_music_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
         )
