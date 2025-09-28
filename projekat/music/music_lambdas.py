@@ -41,6 +41,7 @@ class MusicLambdas(Construct):
         )
         music_table.grant_read_data(self.get_albums_by_genre_lambda)
         song_table.grant_read_data(self.get_albums_by_genre_lambda)
+        s3_bucket.grant_read(self.get_albums_by_genre_lambda)
 
         # ---------- Get music details (by genre + musicId; reads both tables) ----------
         self.get_music_details_lambda = _lambda.Function(

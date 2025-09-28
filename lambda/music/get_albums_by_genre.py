@@ -5,15 +5,18 @@ from boto3.dynamodb.conditions import Key
 from boto3.dynamodb.types import TypeDeserializer
 from decimal import Decimal
 from botocore.exceptions import ClientError
+from urllib.parse import urlparse
 
 dynamodb = boto3.resource("dynamodb")
 ddb = boto3.client("dynamodb")  # client for batch_get_item
+s3c = boto3.client("s3")
 
-MUSIC_BY_GENRE_TABLE = os.environ.get("MUSIC_BY_GENRE_TABLE", "MusicByGenre")
-SONG_TABLE = os.environ.get("SONG_TABLE", "SongTable")
+MUSIC_BY_GENRE_TABLE = os.environ.get("MUSIC_BY_GENRE_TABLE", "MusicByGenre")  # PK: genre, SK: musicId
+SONG_TABLE = os.environ.get("SONG_TABLE", "SongTable")                          # PK: musicId
+S3_BUCKET = os.environ["S3_BUCKET"]
 
-genre_table = dynamodb.Table(MUSIC_BY_GENRE_TABLE)  # PK: genre, SK: musicId
-song_table = dynamodb.Table(SONG_TABLE)             # PK: musicId
+genre_table = dynamodb.Table(MUSIC_BY_GENRE_TABLE)
+song_table = dynamodb.Table(SONG_TABLE)
 _deser = TypeDeserializer()
 
 def decimal_default(obj):
@@ -35,14 +38,35 @@ def response(status_code, body):
 def _unmarshal(av_item: dict) -> dict:
     return {k: _deser.deserialize(v) for k, v in av_item.items()}
 
+def _extract_key_from_url(u: str | None) -> str | None:
+    if not u:
+        return None
+    p = urlparse(u)
+    path = (p.path or "").lstrip("/")
+    # Virtual-hosted or path-style
+    if p.netloc.startswith(f"{S3_BUCKET}.") or p.netloc == S3_BUCKET:
+        return path or None
+    if path.startswith(f"{S3_BUCKET}/"):
+        return path.split("/", 1)[1] or None
+    return path or None
+
+def _presign_from_full_url(u: str | None, expires: int = 3600) -> str | None:
+    key = _extract_key_from_url(u)
+    if not key:
+        return None
+    return s3c.generate_presigned_url(
+        "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=expires
+    )
+
 def _batch_get_songs_by_ids(ids):
-    """BatchGet from SONG_TABLE (client API); returns dict[mid] = item."""
+    """BatchGet from SONG_TABLE (client API); returns dict[mid] = item with title/cover/album."""
     found = {}
     if not ids:
         return found
     CHUNK = 100
     proj_expr = "#mid,#title,#curl,#alb"
     expr_names = {"#mid":"musicId","#title":"title","#curl":"coverUrl","#alb":"albumId"}
+
     for i in range(0, len(ids), CHUNK):
         keys = [{"musicId": {"S": mid}} for mid in ids[i:i+CHUNK]]
         req = {
@@ -76,7 +100,6 @@ def lambda_handler(event, context):
         if not genre or not genre.strip():
             return response(400, {"error": "genre is required while filtering"})
 
-        # 1) Query per-genre index
         proj = "#g,#mid,#alb"
         names = {"#g": "genre", "#mid": "musicId", "#alb": "albumId"}
         index_items = []
@@ -85,7 +108,7 @@ def lambda_handler(event, context):
             ProjectionExpression=proj,
             ExpressionAttributeNames=names
         )
-        index_items += res.get("Items", [])
+        index_items.extend(res.get("Items", []))
         while "LastEvaluatedKey" in res:
             res = genre_table.query(
                 KeyConditionExpression=Key("genre").eq(genre),
@@ -93,14 +116,12 @@ def lambda_handler(event, context):
                 ExpressionAttributeNames=names,
                 ExclusiveStartKey=res["LastEvaluatedKey"]
             )
-            index_items += res.get("Items", [])
+            index_items.extend(res.get("Items", []))
 
         if not index_items:
             return response(200, {"albums": []})
 
-        # 2) Build albums from index first; pick ONE representative musicId per album
-        albums = {}         # albumId -> { albumId, musicIds[], titleList[], coverUrl }
-        reps = {}           # albumId -> representative musicId
+        albums = {}
         for it in index_items:
             mid = it.get("musicId")
             alb = it.get("albumId")
@@ -108,26 +129,25 @@ def lambda_handler(event, context):
                 continue
             if alb not in albums:
                 albums[alb] = {"albumId": alb, "musicIds": [mid], "titleList": [], "coverUrl": None}
-                reps[alb] = mid  # first seen is the representative
             else:
                 albums[alb]["musicIds"].append(mid)
 
-        # 3) Fetch only representatives to get title/cover (1 read per album)
-        rep_ids = list(reps.values())
-        rep_songs = _batch_get_songs_by_ids(rep_ids)
+        all_ids = []
+        for data in albums.values():
+            all_ids.extend(data["musicIds"])
+        all_ids = list(dict.fromkeys(all_ids))
 
-        # 4) Fill titleList/coverUrl using reps; keep first non-empty cover
-        for alb, rep_mid in reps.items():
-            rep = rep_songs.get(rep_mid, {})
-            title = rep.get("title")
-            cover = rep.get("coverUrl")
-            if title:
-                albums[alb]["titleList"].append(title)
-            if cover and not albums[alb]["coverUrl"]:
-                albums[alb]["coverUrl"] = cover
+        songs_by_id = _batch_get_songs_by_ids(all_ids)
 
-        # 5) Optionally, if you want *all* titles, you could batch-get all IDs.
-        #    Current approach is optimized: one song per album.
+        # 4) Fill cover (first non-empty among tracks)
+        for alb, data in albums.items():
+            cover = None
+            for mid in data["musicIds"]:
+                song = songs_by_id.get(mid, {})
+                if not cover and song.get("coverUrl"):
+                    cover = _presign_from_full_url(song["coverUrl"]) or song["coverUrl"]
+                    break
+            data["coverUrl"] = cover
 
         return response(200, {"albums": list(albums.values())})
 
