@@ -78,6 +78,14 @@ class ProjekatStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
         )
 
+        self.song_table = dynamodb.Table(
+            self, "SongTable",
+            partition_key=dynamodb.Attribute(
+                name="musicId", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode = dynamodb.BillingMode.PAY_PER_REQUEST
+        )
+
         self.subscriptions_table = SubscriptionsTableStack(self, "SubscriptionsTable")
 
         #listening history
@@ -105,7 +113,7 @@ class ProjekatStack(Stack):
         )
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, song_table=self.song_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket)
         subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
         artist_lambdas = ArtistLambdas(
             self, "ArtistLambdas",
