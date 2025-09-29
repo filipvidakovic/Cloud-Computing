@@ -110,3 +110,19 @@ class MusicLambdas(Construct):
         music_table.grant_read_data(self.batch_get_music_lambda)
         song_table.grant_read_data(self.batch_get_music_lambda)
         s3_bucket.grant_read(self.batch_get_music_lambda)
+
+
+        self.download_song_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DownloadSongLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="download_song.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment={
+                **env_vars_common
+            },
+            timeout=Duration.seconds(10),
+        )
+        # Needs to read song metadata + presign S3
+        song_table.grant_read_data(self.download_song_lambda)
+        s3_bucket.grant_read(self.download_song_lambda)
+
