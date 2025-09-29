@@ -169,3 +169,9 @@ class ApiGateway(Construct):
             authorization_type=apigw.AuthorizationType.COGNITO,
             authorizer=authorizer,
         )
+
+        music_download = music_resource.add_resource("download")
+        music_download.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.download_song_lambda)
+        )
