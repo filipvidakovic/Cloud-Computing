@@ -85,12 +85,9 @@ def handle_get(event):
 
 def handle_delete(event):
     path_params = event.get("pathParameters") or {}
-    key = path_params.get("subscriptionKey")  # <-- match frontend
-    print(f"Deleting subscription with key: {key}")
-    print(f"Deleting event: {event}")
+    key = path_params.get("subscriptionKey")
     subscription_type, subscription_id = key.split("=") if key else None
     subscription_key = f"{subscription_type}#{subscription_id}" if subscription_type and subscription_id else None
-    print(f"New key: {subscription_key}")
 
     if not subscription_key:
         return response(400, {"error": "subscriptionKey is required"})

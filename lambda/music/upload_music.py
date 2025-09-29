@@ -18,6 +18,28 @@ S3_BUCKET = os.environ['S3_BUCKET']
 MUSIC_FOLDER = os.environ.get('MUSIC_FOLDER', 'music')
 COVERS_FOLDER = os.environ.get('COVERS_FOLDER', 'covers')
 
+sns = boto3.client("sns")
+SNS_TOPIC_ARN = os.environ["arn:aws:sns:eu-central-1:321775682553:NewSongTopic"]
+
+def notify_subscribers_via_sns(music_id, title, artist_ids, genres):
+    # Build the message payload
+    message = {
+        "eventType": "new_song",
+        "musicId": music_id,
+        "title": title,
+        "artistIds": artist_ids,
+        "genres": genres,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    # Publish to SNS
+    response = sns.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Message=json.dumps(message),
+        Subject=f"New song uploaded: {title}"
+    )
+    return response
+
 # --- Table handles (resource API for simple reads later if needed) ---
 song_table = dynamodb.Table(SONG_TABLE)
 
@@ -154,7 +176,7 @@ def lambda_handler(event, context):
             # Then chunk the rest
             for batch in _chunked(actions[1:], 25):
                 dynamo_client.transact_write_items(TransactItems=batch)
-
+        notify_subscribers_via_sns(music_id, title, artist_ids, genres)
         # Success
         return response(201, {
             "message": "Music content uploaded successfully (normalized)",
