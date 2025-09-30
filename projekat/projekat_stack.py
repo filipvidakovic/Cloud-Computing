@@ -5,6 +5,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_sqs as sqs,
 )
+from aws_cdk import aws_sns as sns
 from constructs import Construct
 from projekat.api.api_gateway_stack import ApiGateway
 from projekat.artists.artists_lambdas import ArtistLambdas
@@ -30,6 +31,11 @@ class ProjekatStack(Stack):
             self, "MusicBucket",
             removal_policy=aws_cdk.RemovalPolicy.DESTROY,  # optional for dev/testing
             auto_delete_objects=True  # optional for dev/testing
+        )
+
+        notifications_topic = sns.Topic(
+            self, "NotificationsTopic",
+            topic_name=f"{PROJECT_PREFIX}NotificationsTopic"
         )
 
         # tables
@@ -118,8 +124,17 @@ class ProjekatStack(Stack):
         rate_lambdas = RateLambdas(self, f"{PROJECT_PREFIX}RateLambdas", rates_table)
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, song_table=self.song_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket,rates_table=rates_table)
-        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
+        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table, notifications_topic=notifications_topic)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", 
+                                     music_table=self.music_table, 
+                                     song_table=self.song_table,
+                                     artist_info_table=self.artist_info_table, 
+                                     s3_bucket=self.music_bucket,
+                                     rates_table=rates_table,
+                                     subscriptions_table=self.subscriptions_table.table,
+                                     cognito=cognito,
+                                     notifications_topic=notifications_topic
+                                     )
         artist_lambdas = ArtistLambdas(
             self, "ArtistLambdas",
             artist_table=self.artist_table,

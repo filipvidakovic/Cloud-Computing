@@ -209,6 +209,4 @@ def lambda_handler(event, context):
         msg = e.response.get("Error", {}).get("Message", str(e))
         return response(500, {"error": f"AWS error: {msg}"})
     except Exception as e:
-        # Log to CloudWatch via print; API GW surfaces 502 on unhandled exceptions
-        print("Unhandled error:", repr(e))
         return response(500, {"error": str(e)})
