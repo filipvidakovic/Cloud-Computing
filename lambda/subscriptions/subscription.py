@@ -3,6 +3,17 @@ import boto3
 import os
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
+
+# Initialize AWS clients
+dynamodb = boto3.resource('dynamodb')
+sns = boto3.client("sns")
+
+# DynamoDB table from environment variable
+table = dynamodb.Table(os.environ['SUBSCRIPTIONS_TABLE'])
+# SNS topic ARN from environment variable
+NOTIFICATIONS_TOPIC_ARN = os.environ["NOTIFICATIONS_TOPIC_ARN"]
+
+
 def get_user_id(event):
     rc = event.get("requestContext", {})
     auth = rc.get("authorizer", {})
@@ -10,9 +21,6 @@ def get_user_id(event):
         return auth["claims"].get("sub")
     return None
 
-# Initialize DynamoDB table from environment variable
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['SUBSCRIPTIONS_TABLE'])
 
 def handler(event, context):
     method = event.get("httpMethod", "")
@@ -39,26 +47,34 @@ def handle_post(event):
         body = json.loads(event.get("body", "{}"))
         subscription_type = body.get("type")
         target_id = body.get("id")
+        email = body.get("email")   # ✅ client must send email
 
-        if not user_id or not subscription_type or not target_id:
-            return response(400, {"error": "userId, type, and id are required"})
+        if not user_id or not subscription_type or not target_id or not email:
+            return response(400, {"error": "userId, type, id, and email are required"})
 
+        # Save subscription to DynamoDB
         subscription_key = f"{subscription_type}#{target_id}"
-
         item = {
             "userId": user_id,
             "subscriptionId": subscription_key,
             "subscriptionType": subscription_type,
             "targetId": target_id,
+            "email": email,
             "createdAt": datetime.utcnow().isoformat()
         }
-
         table.put_item(Item=item)
+
+        # Subscribe email to SNS topic
+        sns.subscribe(
+            TopicArn=NOTIFICATIONS_TOPIC_ARN,
+            Protocol="email",
+            Endpoint=email
+        )
 
         return response(
             200,
             {
-                "message": f"Subscribed to {subscription_type} {target_id}",
+                "message": f"Subscribed {email} to {subscription_type} {target_id}",
                 "item": item
             }
         )
@@ -66,11 +82,12 @@ def handle_post(event):
     except Exception as e:
         return response(500, {"error": str(e)})
 
+
 def handle_get(event):
     try:
         user_id = get_user_id(event)
         if not user_id:
-            return response(401, {"error": "userId is required"})
+            return response(401, {"error": "Unauthorized"})
 
         result = table.query(
             KeyConditionExpression=Key("userId").eq(user_id)
@@ -125,10 +142,11 @@ def response(status, body):
         "body": json.dumps(body)
     }
 
+
 def cors_response():
     """Handle OPTIONS preflight requests."""
     return {
-        "body": {"message": "CORS preflight request"},
+        "body": json.dumps({"message": "CORS preflight request"}),
         "statusCode": 200,
         "headers": {
             "Access-Control-Allow-Origin": "*",

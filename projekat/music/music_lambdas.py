@@ -1,19 +1,32 @@
-from aws_cdk import Duration, aws_lambda as _lambda
+from aws_cdk import (
+    Duration,
+    aws_lambda as _lambda,
+    aws_sns as sns,
+    aws_sns_subscriptions as subs,
+)
 from constructs import Construct
 from ..config import PROJECT_PREFIX
+from aws_cdk import aws_iam as iam
 
 class MusicLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table):
+    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table, subscriptions_table, cognito, notifications_topic):
         super().__init__(scope, id)
 
         # music_table = MUSIC_BY_GENRE_TABLE (genre index)
         # song_table  = SONG_TABLE (canonical)
+                # ---------- SNS Topic ----------
+        self.notifications_topic = notifications_topic
+
+        # ---------- Env vars ----------
         env_vars_common = {
             "MUSIC_BY_GENRE_TABLE": music_table.table_name,
             "SONG_TABLE": song_table.table_name,
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "S3_BUCKET": s3_bucket.bucket_name,
-            "RATES_TABLE": rates_table.table_name
+            "RATES_TABLE": rates_table.table_name,
+            "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
+            "NOTIFICATIONS_TOPIC_ARN": self.notifications_topic.topic_arn,
+            "USER_POOL_ID": cognito.user_pool.user_pool_id
         }
 
         # ---------- Upload ----------
@@ -29,6 +42,23 @@ class MusicLambdas(Construct):
         music_table.grant_write_data(self.upload_music_lambda)
         artist_info_table.grant_write_data(self.upload_music_lambda)
         s3_bucket.grant_put(self.upload_music_lambda)
+        subscriptions_table.grant_read_data(self.upload_music_lambda)
+        self.notifications_topic.grant_publish(self.upload_music_lambda)
+        self.upload_music_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cognito-idp:AdminGetUser",
+                    "cognito-idp:ListUsers"
+                ],
+                resources=[cognito.user_pool.user_pool_arn]
+            )
+        )
+        self.upload_music_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["sns:Subscribe", "sns:Unsubscribe"],  # allow subscribe & unsubscribe
+                resources=[self.notifications_topic.topic_arn]
+            )
+        )
 
         # ---------- Get albums by genre (reads index + songs) ----------
         self.get_albums_by_genre_lambda = _lambda.Function(
