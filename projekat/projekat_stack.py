@@ -16,9 +16,11 @@ from projekat.rates.rate_table import RatesTable
 from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from projekat.config import PROJECT_PREFIX
 from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_iam as iam
 
 from projekat.music.music_lambdas import MusicLambdas
 from projekat.subscriptions.subscriptions_table import SubscriptionsTableStack
+from projekat.transcription.transcription_stack import TranscriptionStack
 from projekat.user.user_lambdas import UserLambdas
 
 
@@ -31,6 +33,19 @@ class ProjekatStack(Stack):
             self, "MusicBucket",
             removal_policy=aws_cdk.RemovalPolicy.DESTROY,  # optional for dev/testing
             auto_delete_objects=True  # optional for dev/testing
+        )
+
+        transcriptions_bucket = s3.Bucket(
+            self, f"{PROJECT_PREFIX}TranscriptionsBucket",
+            removal_policy=aws_cdk.RemovalPolicy.DESTROY,
+            auto_delete_objects=True
+        )
+        transcriptions_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:PutObject"],
+                resources=[f"{transcriptions_bucket.bucket_arn}/*"],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
         )
 
         notifications_topic = sns.Topic(
@@ -94,6 +109,14 @@ class ProjekatStack(Stack):
             billing_mode = dynamodb.BillingMode.PAY_PER_REQUEST
         )
 
+        
+        self.transcription = TranscriptionStack(
+            self, "Transcription",
+            song_bucket=self.music_bucket,
+            transcriptions_bucket=transcriptions_bucket,
+            song_table=self.song_table
+        )
+
         self.subscriptions_table = SubscriptionsTableStack(self, "SubscriptionsTable")
 
         #listening history
@@ -150,6 +173,7 @@ class ProjekatStack(Stack):
                    subscription_lambdas=subscription_lambdas, 
                    cognito=cognito,
                    user_lambdas=user_lambdas,
-                   rate_lambdas=rate_lambdas
+                   rate_lambdas=rate_lambdas,
+                   transcription_stack=self.transcription
         )
 
