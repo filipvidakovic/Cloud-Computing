@@ -31,19 +31,29 @@ class ProjekatStack(Stack):
 
         self.music_bucket = s3.Bucket(
             self, "MusicBucket",
-            removal_policy=aws_cdk.RemovalPolicy.DESTROY,  # optional for dev/testing
-            auto_delete_objects=True  # optional for dev/testing
+            removal_policy=aws_cdk.RemovalPolicy.DESTROY,
+            auto_delete_objects=True 
         )
 
-        transcriptions_bucket = s3.Bucket(
-            self, f"{PROJECT_PREFIX}TranscriptionsBucket",
-            removal_policy=aws_cdk.RemovalPolicy.DESTROY,
-            auto_delete_objects=True
+        self.music_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject"],
+                resources=[f"{self.music_bucket.bucket_arn}/*"],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
         )
-        transcriptions_bucket.add_to_resource_policy(
+
+        self.music_bucket.add_to_resource_policy(
             iam.PolicyStatement(
                 actions=["s3:PutObject"],
-                resources=[f"{transcriptions_bucket.bucket_arn}/*"],
+                resources=[f"{self.music_bucket.bucket_arn}/transcriptions/*"],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
+        )
+        self.music_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:PutObject", "s3:GetBucketLocation"],
+                resources=[f"{self.music_bucket.bucket_arn}/transcriptions/*", self.music_bucket.bucket_arn],
                 principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
             )
         )
@@ -113,7 +123,6 @@ class ProjekatStack(Stack):
         self.transcription = TranscriptionStack(
             self, "Transcription",
             song_bucket=self.music_bucket,
-            transcriptions_bucket=transcriptions_bucket,
             song_table=self.song_table
         )
 
@@ -147,7 +156,7 @@ class ProjekatStack(Stack):
         rate_lambdas = RateLambdas(self, f"{PROJECT_PREFIX}RateLambdas", rates_table)
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table, notifications_topic=notifications_topic)
+        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table, notifications_topic=notifications_topic, userpool=cognito.user_pool)
         music_lambdas = MusicLambdas(self, "MusicLambdas", 
                                      music_table=self.music_table, 
                                      song_table=self.song_table,

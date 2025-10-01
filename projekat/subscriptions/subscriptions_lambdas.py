@@ -5,16 +5,19 @@ from aws_cdk import (
     Duration
 )
 from constructs import Construct
+from aws_cdk import aws_cognito as cognito
+
 from ..config import PROJECT_PREFIX
 
 
 class SubscriptionsLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, subscriptions_table, notifications_topic: sns.Topic):
+    def __init__(self, scope: Construct, id: str, subscriptions_table, notifications_topic: sns.Topic, userpool: cognito.UserPool):
         super().__init__(scope, id)
 
         env_vars = {
             "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
             "NOTIFICATIONS_TOPIC_ARN": notifications_topic.topic_arn,  # ✅ pass topic ARN
+            "USER_POOL_ID": userpool.user_pool_id
         }
 
         self.subscriptions_lambda = _lambda.Function(
@@ -28,6 +31,13 @@ class SubscriptionsLambdas(Construct):
 
         # DynamoDB permissions
         subscriptions_table.grant_read_write_data(self.subscriptions_lambda)
+        self.subscriptions_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["cognito-idp:ListUsers", "cognito-idp:AdminGetUser"],
+                resources=[userpool.user_pool_arn]
+            )
+        )
+
 
         # SNS permissions
         notifications_topic.grant_publish(self.subscriptions_lambda)

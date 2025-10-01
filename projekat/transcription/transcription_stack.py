@@ -10,7 +10,7 @@ from ..config import PROJECT_PREFIX
 
 
 class TranscriptionStack(Construct):
-    def __init__(self, scope, id, song_bucket, transcriptions_bucket, song_table, **kwargs):
+    def __init__(self, scope, id, song_bucket, song_table, **kwargs):
         super().__init__(scope, id, **kwargs)
 
         # Lambda 1: starts transcription job when song uploaded
@@ -22,15 +22,14 @@ class TranscriptionStack(Construct):
             environment={
                 "SONG_TABLE": song_table.table_name,
                 "SONG_BUCKET": song_bucket.bucket_name,
-                "TRANSCRIPTIONS_BUCKET": transcriptions_bucket.bucket_name,
             },
             timeout=cdk.Duration.minutes(15),
             memory_size=1024,
         )
 
         song_bucket.grant_read(self.start_fn)
+        song_bucket.grant_write(self.start_fn)
         song_table.grant_write_data(self.start_fn)
-        transcriptions_bucket.grant_write(self.start_fn)
 
         self.start_fn.add_to_role_policy(iam.PolicyStatement(
             actions=["transcribe:StartTranscriptionJob"],
@@ -41,6 +40,7 @@ class TranscriptionStack(Construct):
         song_bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
             s3n.LambdaDestination(self.start_fn),
+            s3.NotificationKeyFilter(prefix="music/")
         )
 
         # Lambda 2: processes transcription JSON
@@ -51,16 +51,11 @@ class TranscriptionStack(Construct):
             code=_lambda.Code.from_asset("lambda/transcription"),
             environment={
                 "SONG_TABLE": song_table.table_name,
+                "SONG_BUCKET": song_bucket.bucket_name,
             },
             timeout=cdk.Duration.minutes(5),
             memory_size=512,
         )
 
         song_table.grant_write_data(self.process_fn)
-        transcriptions_bucket.grant_read(self.process_fn)
-
-        # Trigger Lambda 2 when transcript JSON is written
-        transcriptions_bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(self.process_fn),
-        )
+        song_bucket.grant_read(self.process_fn)

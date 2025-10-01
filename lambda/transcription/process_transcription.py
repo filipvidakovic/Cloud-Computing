@@ -16,7 +16,7 @@ def handler(event, context):
         transcript_text = data["results"]["transcripts"][0]["transcript"]
 
         # Extract music_id safely (remove any folder prefix and .json suffix)
-        music_id = key.split("/")[-1].replace(".json", "")
+        music_id = os.path.basename(key).replace(".json", "")
 
         ddb.update_item(
             TableName=SONG_TABLE,
