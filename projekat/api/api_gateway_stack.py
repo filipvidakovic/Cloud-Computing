@@ -84,6 +84,10 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(artist_lambdas.get_artists_by_genre_lambda),
         )
 
+        artist_resource.add_method(
+            "PUT",
+            apigw.LambdaIntegration(artist_lambdas.update_artist_lambda)
+        )
 
 
         # music content
