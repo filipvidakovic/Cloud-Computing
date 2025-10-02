@@ -12,12 +12,6 @@ class ArtistLambdas(Construct):
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "GENRE_INDEX": "GenreIndex",
         }
-        delete_env = {
-            **base_env,
-            "SONG_TABLE": song_table.table_name,
-            "MUSIC_BY_GENRE_TABLE": music_by_genre_table.table_name,
-            "S3_BUCKET": s3_bucket.bucket_name,
-        }
 
         self.create_artist_lambda = _lambda.Function(
             self, f"{PROJECT_PREFIX}CreateArtistLambda",
@@ -61,7 +55,7 @@ class ArtistLambdas(Construct):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_artist.lambda_handler",
             code=_lambda.Code.from_asset("lambda/artists"),
-            environment=delete_env,
+            environment=env_vars,
             timeout=Duration.seconds(120),  # give it room to scan/delete
         )
 
