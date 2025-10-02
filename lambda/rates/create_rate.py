@@ -1,5 +1,7 @@
 import os, json, boto3
 from datetime import datetime
+from common.queue import enqueue_recompute
+
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["RATES_TABLE"])
@@ -43,5 +45,8 @@ def lambda_handler(event, context):
         "createdAt": now,
         "updatedAt": now
     })
+
+    # Send SQS message to recompute feed
+    enqueue_recompute(user_id, "rate", music_id)
 
     return build_response(201, {"message": "Rate saved"})
