@@ -11,7 +11,7 @@ class SubscriptionsLambdas(Construct):
         super().__init__(scope, id)
 
         env_vars = {
-            "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name
+            "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
         }
 
         self.subscriptions_lambda = _lambda.Function(

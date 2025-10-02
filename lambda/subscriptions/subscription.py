@@ -3,6 +3,8 @@ import boto3
 import os
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
+from common.queue import enqueue_recompute
+
 def get_user_id(event):
     rc = event.get("requestContext", {})
     auth = rc.get("authorizer", {})
@@ -54,6 +56,9 @@ def handle_post(event):
         }
 
         table.put_item(Item=item)
+
+        # Send SQS message to recompute feed
+        enqueue_recompute(user_id, "subscribe", target_id)
 
         return response(
             200,
@@ -108,6 +113,9 @@ def handle_delete(event):
             },
             ConditionExpression="attribute_exists(subscriptionId)"
         )
+        # Send SQS message to recompute feed
+        enqueue_recompute(user_id, "unsubscribe", subscription_id)
+
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         return response(404, {"error": "Subscription not found"})
     except Exception as e:
