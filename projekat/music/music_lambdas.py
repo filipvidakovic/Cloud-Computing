@@ -123,8 +123,19 @@ class MusicLambdas(Construct):
             },
             timeout=Duration.seconds(10),
         )
+
+        self.get_all_songs_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetAllSongsLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_songs.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars_common,
+            timeout=Duration.seconds(30),
+        )
+
         # Needs to read song metadata + presign S3
         song_table.grant_read_data(self.download_song_lambda)
+        song_table.grant_read_data(self.get_all_songs_lambda)
         s3_bucket.grant_read(self.download_song_lambda)
         artist_info_table.grant_read_write_data(self.upload_music_lambda)
         artist_info_table.grant_read_write_data(self.delete_music_lambda)

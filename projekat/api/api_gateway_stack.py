@@ -105,6 +105,11 @@ class ApiGateway(Construct):
             "PUT",
             apigw.LambdaIntegration(music_lambdas.update_music_lambda)
         )
+        all_songs_resource = music_resource.add_resource("all")
+        all_songs_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_all_songs_lambda)
+        )
         
         delete_by_artist = music_resource.add_resource("delete-by-artist").add_resource("{artistId}")
         delete_by_artist.add_method(
