@@ -3,7 +3,7 @@ from constructs import Construct
 from ..config import PROJECT_PREFIX
 
 class MusicLambdas(Construct):
-    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table):
+    def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table, subscriptions_table):
         super().__init__(scope, id)
 
         # music_table = MUSIC_BY_GENRE_TABLE (genre index)
@@ -13,7 +13,8 @@ class MusicLambdas(Construct):
             "SONG_TABLE": song_table.table_name,
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "S3_BUCKET": s3_bucket.bucket_name,
-            "RATES_TABLE": rates_table.table_name
+            "RATES_TABLE": rates_table.table_name,
+            "USER_SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
         }
 
         # ---------- Upload ----------
@@ -125,4 +126,7 @@ class MusicLambdas(Construct):
         # Needs to read song metadata + presign S3
         song_table.grant_read_data(self.download_song_lambda)
         s3_bucket.grant_read(self.download_song_lambda)
-
+        artist_info_table.grant_read_write_data(self.upload_music_lambda)
+        artist_info_table.grant_read_write_data(self.delete_music_lambda)
+        subscriptions_table.grant_read_data(self.upload_music_lambda)
+        subscriptions_table.grant_read_data(self.delete_music_lambda)

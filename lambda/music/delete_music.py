@@ -5,10 +5,13 @@ from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Attr
 from urllib.parse import urlparse
 from typing import List, Dict, Any
+from common.queue import enqueue_recompute
+from boto3.dynamodb.conditions import Key
 
 SONG_TABLE = os.environ.get("SONG_TABLE", "SongTable")
 MUSIC_BY_GENRE_TABLE = os.environ.get("MUSIC_BY_GENRE_TABLE", "MusicByGenre")
 S3_BUCKET = os.environ["S3_BUCKET"]
+ARTIST_INFO_TABLE = os.environ["ARTIST_INFO_TABLE"]
 
 dynamodb = boto3.resource("dynamodb")
 dynamo_client = boto3.client("dynamodb")
@@ -16,6 +19,9 @@ s3 = boto3.client("s3")
 
 song_table = dynamodb.Table(SONG_TABLE)
 genre_table = dynamodb.Table(MUSIC_BY_GENRE_TABLE)
+artist_info_table = dynamodb.Table(ARTIST_INFO_TABLE)
+subs_table = dynamodb.Table(os.environ["USER_SUBSCRIPTIONS_TABLE"])
+
 
 
 def response(status, body):
@@ -128,6 +134,12 @@ def lambda_handler(event, context):
         song_res = song_table.get_item(Key={"musicId": music_id}, ConsistentRead=True)
         song_item = song_res.get("Item")
 
+        artist_ids = []
+        if song_item:
+            artist_ids = song_item.get("artistIds", [])
+            if isinstance(artist_ids, list):
+                artist_ids = [a for a in artist_ids if isinstance(a, str)]
+
         genres_from_song = []
         if song_item:
             g = song_item.get("genres")
@@ -156,6 +168,25 @@ def lambda_handler(event, context):
         for batch in batches:
             dynamo_client.transact_write_items(TransactItems=batch)
 
+        # remove song from each artist's songs list
+        for artist_id in artist_ids:
+            try:
+                res = artist_info_table.get_item(Key={"artistId": artist_id})
+                if "Item" not in res:
+                    continue
+                songs = res["Item"].get("songs", [])
+                if not isinstance(songs, list):
+                    songs = []
+                new_songs = [s for s in songs if s != music_id]
+                artist_info_table.update_item(
+                    Key={"artistId": artist_id},
+                    UpdateExpression="SET #songs = :s",
+                    ExpressionAttributeNames={"#songs": "songs"},
+                    ExpressionAttributeValues={":s": new_songs}
+                )
+            except Exception as e:
+                print(f"Failed to update artist {artist_id}: {e}")
+
         deleted_files, deleted_covers = [], []
         if song_item:
             fkey = _extract_s3_key(song_item.get("fileUrl"))
@@ -173,6 +204,32 @@ def lambda_handler(event, context):
                     deleted_covers.append(ckey)
                 except Exception as e:
                     print(f"Could not delete cover image: {e}")
+
+
+        # --- Recompute feed for subscribed users ---
+        try:
+            # notify users subscribed by genre
+            for g in genres_from_song:
+                resp = subs_table.query(
+                    IndexName="SubscriptionTypeTargetIdIndex",
+                    KeyConditionExpression=Key("subscriptionType").eq("genre") & Key("targetId").eq(g)
+                )
+                for item in resp.get("Items", []):
+                    user_id = item["userId"]
+                    enqueue_recompute(user_id, "delete_song_genre", music_id)
+
+            # notify users subscribed by artist
+            for artist_id in artist_ids:
+                resp = subs_table.query(
+                    IndexName="SubscriptionTypeTargetIdIndex",
+                    KeyConditionExpression=Key("subscriptionType").eq("artist") & Key("targetId").eq(artist_id)
+                )
+                for item in resp.get("Items", []):
+                    user_id = item["userId"]
+                    enqueue_recompute(user_id, "delete_song_artist", music_id)
+
+        except Exception as e:
+            print(f"⚠️ Failed to enqueue recompute jobs on delete: {e}")
 
         return response(200, {
             "message": "Delete completed",
