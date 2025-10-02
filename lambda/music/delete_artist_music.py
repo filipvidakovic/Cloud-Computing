@@ -5,9 +5,8 @@ from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Attr
 from urllib.parse import urlparse
 
-# ---- Env ----
-SONG_TABLE = os.environ.get("SONG_TABLE", "SongTable")                 # PK: musicId
-MUSIC_BY_GENRE_TABLE = os.environ.get("MUSIC_BY_GENRE_TABLE", "MusicByGenre")  # PK: genre, SK: musicId
+SONG_TABLE = os.environ.get("SONG_TABLE")
+MUSIC_BY_GENRE_TABLE = os.environ.get("MUSIC_BY_GENRE_TABLE")
 S3_BUCKET = os.environ["S3_BUCKET"]
 
 # ---- AWS clients ----
@@ -77,7 +76,6 @@ def lambda_handler(event, context):
         if not artist_id:
             return response(400, {"error": "Missing artistId"})
 
-        # 1) Scan SONG_TABLE for songs that contain this artistId
         songs = []
         scan_kwargs = {
             "FilterExpression": Attr("artistIds").contains(artist_id),
