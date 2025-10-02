@@ -40,27 +40,35 @@ class ArtistLambdas(Construct):
             timeout=Duration.seconds(10)
         )
 
+        self.update_artist_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}UpdateArtistLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="update_artist.lambda_handler",  # <-- points to lambda/artists/update_artist.py
+            code=_lambda.Code.from_asset("lambda/artists"),
+            environment=env_vars,
+            timeout=Duration.seconds(15)
+        )
+
+
         self.delete_artist_lambda = _lambda.Function(
             self, f"{PROJECT_PREFIX}DeleteArtistLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_artist.lambda_handler",
             code=_lambda.Code.from_asset("lambda/artists"),
-            environment={
-                "ARTISTS_TABLE": artist_table.table_name,
-                "ARTIST_INFO_TABLE": artist_info_table.table_name,
-                "DELETE_SONGS_FUNCTION": delete_artist_songs_lambda.function_name
-            },
-            timeout=Duration.seconds(10)
+            environment=env_vars,
+            timeout=Duration.seconds(120),  # give it room to scan/delete
         )
 
         artist_table.grant_read_data(self.get_artist_lambda)
         artist_table.grant_read_data(self.get_artists_by_genre_lambda)
         artist_table.grant_write_data(self.create_artist_lambda)
         artist_table.grant_read_write_data(self.delete_artist_lambda)
+        artist_table.grant_read_write_data(self.update_artist_lambda)
 
         artist_info_table.grant_read_data(self.get_artist_lambda)
         artist_info_table.grant_read_data(self.get_artists_by_genre_lambda)
         artist_info_table.grant_write_data(self.create_artist_lambda)
         artist_info_table.grant_read_write_data(self.delete_artist_lambda)
+        artist_info_table.grant_read_write_data(self.update_artist_lambda)
 
         delete_artist_songs_lambda.grant_invoke(self.delete_artist_lambda)

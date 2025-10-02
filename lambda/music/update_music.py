@@ -5,6 +5,7 @@ import base64
 import mimetypes
 import decimal
 from datetime import datetime
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -24,6 +25,29 @@ COVERS_FOLDER = os.environ.get('COVERS_FOLDER', 'covers')
 song_table = dynamodb.Table(SONG_TABLE)
 genre_table = dynamodb.Table(MUSIC_BY_GENRE_TABLE)
 
+# --- MIME helpers ---
+AUDIO_MIME_OVERRIDES = {
+    "mp3": "audio/mpeg",
+    "mpeg": "audio/mpeg",
+    "mpga": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "mp4": "audio/mp4",
+    "aac": "audio/aac",
+    "wav": "audio/wav",
+    "ogg": "audio/ogg",
+    "oga": "audio/ogg",
+    "opus": "audio/ogg",
+    "webm": "audio/webm",
+    "flac": "audio/flac",
+}
+def _guess_mime_for_audio(file_name: str) -> str:
+    ext = (file_name.rsplit(".", 1)[-1] if "." in file_name else "").lower()
+    if ext in AUDIO_MIME_OVERRIDES:
+        return AUDIO_MIME_OVERRIDES[ext]
+    guessed = mimetypes.guess_type(file_name)[0]
+    if guessed in ("video/mp4", "video/quicktime") and ext in ("m4a", "mp4"):
+        return "audio/mp4"
+    return guessed or "application/octet-stream"
 
 # Decimal encoder so JSON dumps can handle DynamoDB Decimals
 class DecimalEncoder(json.JSONEncoder):
@@ -32,23 +56,21 @@ class DecimalEncoder(json.JSONEncoder):
             return int(obj) if obj % 1 == 0 else float(obj)
         return super().default(obj)
 
-
 def response(status_code, body):
     return {
         "statusCode": status_code,
         "headers": {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,PUT"
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+            "Vary": "Origin",
         },
         "body": json.dumps(body, cls=DecimalEncoder)
     }
 
-
 def _put_object_to_s3(bucket: str, key: str, data: bytes, content_type: str) -> str:
     s3.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
     return f"https://{bucket}.s3.amazonaws.com/{key}"
-
 
 def _chunked(iterable, size):
     chunk = []
@@ -60,13 +82,28 @@ def _chunked(iterable, size):
     if chunk:
         yield chunk
 
+def _extract_key_from_url(u: str | None) -> str | None:
+    if not u:
+        return None
+    p = urlparse(u)
+    path = (p.path or "").lstrip("/")
+    # virtual-hosted or path-style
+    if p.netloc.startswith(f"{S3_BUCKET}.") or p.netloc == S3_BUCKET:
+        return path or None
+    if path.startswith(f"{S3_BUCKET}/"):
+        return path.split("/", 1)[1] or None
+    return path or None
+
+
+def _presign_from_full_url(u: str | None, expires: int = 3600) -> str | None:
+    key = _extract_key_from_url(u)
+    if not key:
+        return None
+    return s3.generate_presigned_url(
+        "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=expires
+    )
 
 def _marshal_expr_attr_vals(python_vals: dict) -> dict:
-    """
-    Convert ExpressionAttributeValues from native Python types to the low-level
-    AttributeValue format required by transact_write_items.
-    We only pass scalars/list[str]/numbers here, so handle a few types.
-    """
     out = {}
     for k, v in python_vals.items():
         if isinstance(v, str):
@@ -78,7 +115,6 @@ def _marshal_expr_attr_vals(python_vals: dict) -> dict:
         else:
             out[k] = {"S": str(v)}
     return out
-
 
 def lambda_handler(event, context):
     # CORS preflight
@@ -94,7 +130,7 @@ def lambda_handler(event, context):
             return response(400, {"error": "musicId is required"})
 
         # Fetch current song (we’ll use its current genres & albumId)
-        current = song_table.get_item(Key={"musicId": music_id}).get("Item")
+        current = song_table.get_item(Key={"musicId": music_id}, ConsistentRead=True).get("Item")
         if not current:
             return response(404, {"error": "Song not found for given musicId"})
 
@@ -118,14 +154,19 @@ def lambda_handler(event, context):
         set_clauses = ["#updatedAt = :updatedAt"]
         remove_clauses = []
 
+        # Track fresh upload keys & content types for presign
+        music_key = None
+        cover_key = None
+        audio_ct = None
+
         # Audio update
         if file_content_b64:
             if not file_name:
                 return response(400, {"error": "fileName is required when updating fileContent"})
             file_bytes = base64.b64decode(file_content_b64)
-            content_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+            audio_ct = _guess_mime_for_audio(file_name)
             music_key = f"{MUSIC_FOLDER}/{uuid.uuid4()}-{file_name}"
-            file_url = _put_object_to_s3(S3_BUCKET, music_key, file_bytes, content_type)
+            file_url = _put_object_to_s3(S3_BUCKET, music_key, file_bytes, audio_ct)
             file_ext = (file_name.rsplit('.', 1)[-1] if '.' in file_name else '').lower()
 
             expr_attr_names.update({"#fileUrl": "fileUrl", "#fileType": "fileType", "#fileSize": "fileSize"})
@@ -287,8 +328,20 @@ def lambda_handler(event, context):
                 "removed": sorted(list(to_remove)),
             }
 
-        # Return updated song
-        updated = song_table.get_item(Key={"musicId": music_id}).get("Item", {})
+        # --- Read updated item (strongly consistent) ---
+        updated = song_table.get_item(Key={"musicId": music_id}, ConsistentRead=True).get("Item", {}) or {}
+
+        # --- Presign URLs (prefer fresh keys from this request) ---
+
+        file_signed = _presign_from_full_url(updated.get("fileUrl"))
+
+        cover_signed = _presign_from_full_url(updated.get("coverUrl"))
+
+        if file_signed:
+            updated["fileUrlSigned"] = file_signed
+        if cover_signed:
+            updated["coverUrlSigned"] = cover_signed
+
         return response(200, {
             "message": "Song updated successfully (genres & album synchronized)",
             "musicId": music_id,
