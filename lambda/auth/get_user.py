@@ -25,7 +25,7 @@ def handler(event, context):
     try:
         resp = client.admin_get_user(
             UserPoolId=os.environ["USER_POOL_ID"],
-            Username=username
+            Username=username,
         )
 
         # Extract attributes into a dictionary

@@ -7,6 +7,7 @@ from projekat.auth.auth_lambda import AuthLambdas
 from projekat.auth.cognito_stack import CognitoAuth
 from projekat.rates.rate_lambdas import RateLambdas
 from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
+from projekat.transcription.transcription_stack import TranscriptionStack
 from ..config import PROJECT_PREFIX
 from ..user.user_lambdas import UserLambdas
 from ..music import music_lambdas
@@ -21,7 +22,8 @@ class ApiGateway(Construct):
                  subscription_lambdas: SubscriptionsLambdas, 
                  cognito: CognitoAuth,
                  user_lambdas: UserLambdas,
-                 rate_lambdas: RateLambdas):
+                 rate_lambdas: RateLambdas,
+                 transcription_stack: TranscriptionStack):
         super().__init__(scope, id)
         api = apigw.RestApi(
             self,
@@ -214,3 +216,22 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.download_song_lambda)
         )
 
+
+        # transcriptions
+        transcriptions_resource = api.root.add_resource("transcriptions")
+
+        # fetch transcript (processed Lambda)
+        transcriptions_resource.add_resource("{songId}").add_method(
+            "GET",
+            apigw.LambdaIntegration(transcription_stack.process_fn),  # process lambda can also return transcript
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )
+
+        # (optional) trigger transcription manually
+        transcriptions_resource.add_resource("start").add_method(
+            "POST",
+            apigw.LambdaIntegration(transcription_stack.start_fn),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+        )

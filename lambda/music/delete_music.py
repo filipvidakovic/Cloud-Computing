@@ -195,7 +195,7 @@ def lambda_handler(event, context):
                     s3.delete_object(Bucket=S3_BUCKET, Key=fkey)
                     deleted_files.append(fkey)
                 except Exception as e:
-                    print(f"Could not delete music file: {e}")
+                    pass
 
             ckey = _extract_s3_key(song_item.get("coverUrl"))
             if ckey:
@@ -203,7 +203,7 @@ def lambda_handler(event, context):
                     s3.delete_object(Bucket=S3_BUCKET, Key=ckey)
                     deleted_covers.append(ckey)
                 except Exception as e:
-                    print(f"Could not delete cover image: {e}")
+                    pass
 
 
         # --- Recompute feed for subscribed users ---

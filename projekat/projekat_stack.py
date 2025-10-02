@@ -6,6 +6,7 @@ from aws_cdk import (
     aws_sqs as sqs,
 )
 from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_sns as sns
 from constructs import Construct
 from projekat.api.api_gateway_stack import ApiGateway
 from projekat.artists.artists_lambdas import ArtistLambdas
@@ -17,8 +18,10 @@ from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from projekat.config import PROJECT_PREFIX
 from aws_cdk import aws_s3 as s3
 from projekat.feed_queue_stack import FeedQueueStack
+from aws_cdk import aws_iam as iam
 from projekat.music.music_lambdas import MusicLambdas
 from projekat.subscriptions.subscriptions_table import SubscriptionsTableStack
+from projekat.transcription.transcription_stack import TranscriptionStack
 from projekat.user.user_lambdas import UserLambdas
 
 
@@ -29,8 +32,36 @@ class ProjekatStack(Stack):
 
         self.music_bucket = s3.Bucket(
             self, "MusicBucket",
-            removal_policy=aws_cdk.RemovalPolicy.DESTROY,  # optional for dev/testing
-            auto_delete_objects=True  # optional for dev/testing
+            removal_policy=aws_cdk.RemovalPolicy.DESTROY,
+            auto_delete_objects=True 
+        )
+
+        self.music_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject"],
+                resources=[f"{self.music_bucket.bucket_arn}/*"],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
+        )
+
+        self.music_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:PutObject"],
+                resources=[f"{self.music_bucket.bucket_arn}/transcriptions/*"],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
+        )
+        self.music_bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:PutObject", "s3:GetBucketLocation"],
+                resources=[f"{self.music_bucket.bucket_arn}/transcriptions/*", self.music_bucket.bucket_arn],
+                principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
+            )
+        )
+
+        notifications_topic = sns.Topic(
+            self, "NotificationsTopic",
+            topic_name=f"{PROJECT_PREFIX}NotificationsTopic"
         )
 
         # tables
@@ -89,6 +120,13 @@ class ProjekatStack(Stack):
             billing_mode = dynamodb.BillingMode.PAY_PER_REQUEST
         )
 
+        
+        self.transcription = TranscriptionStack(
+            self, "Transcription",
+            song_bucket=self.music_bucket,
+            song_table=self.song_table
+        )
+
         self.subscriptions_table = SubscriptionsTableStack(self, "SubscriptionsTable")
 
         #listening history
@@ -125,8 +163,17 @@ class ProjekatStack(Stack):
         rate_lambdas = RateLambdas(self, f"{PROJECT_PREFIX}RateLambdas", rates_table)
         cognito = CognitoAuth(self, f"{PROJECT_PREFIX}Cognito")
         auth_lambdas = AuthLambdas(self, f"{PROJECT_PREFIX}Lambdas", user_pool=cognito.user_pool, user_pool_client=cognito.user_pool_client)
-        music_lambdas = MusicLambdas(self, "MusicLambdas", music_table=self.music_table, song_table=self.song_table,artist_info_table=self.artist_info_table, s3_bucket=self.music_bucket,rates_table=rates_table,subscriptions_table=self.subscriptions_table.table)
-        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table)
+        subscription_lambdas = SubscriptionsLambdas(self, "SubscriptionLambdas", subscriptions_table=self.subscriptions_table.table, notifications_topic=notifications_topic, userpool=cognito.user_pool)
+        music_lambdas = MusicLambdas(self, "MusicLambdas", 
+                                     music_table=self.music_table, 
+                                     song_table=self.song_table,
+                                     artist_info_table=self.artist_info_table, 
+                                     s3_bucket=self.music_bucket,
+                                     rates_table=rates_table,
+                                     subscriptions_table=self.subscriptions_table.table,
+                                     cognito=cognito,
+                                     notifications_topic=notifications_topic
+                                     )
         artist_lambdas = ArtistLambdas(
             self, "ArtistLambdas",
             artist_table=self.artist_table,
@@ -152,7 +199,8 @@ class ProjekatStack(Stack):
                    subscription_lambdas=subscription_lambdas, 
                    cognito=cognito,
                    user_lambdas=user_lambdas,
-                   rate_lambdas=rate_lambdas
+                   rate_lambdas=rate_lambdas,
+                   transcription_stack=self.transcription
         )
         feed_queue_stack = FeedQueueStack(
             self, f"{PROJECT_PREFIX}FeedQueue",
