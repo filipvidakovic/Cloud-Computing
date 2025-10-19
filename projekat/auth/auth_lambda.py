@@ -49,7 +49,8 @@ class AuthLambdas(Construct):
                          "cognito-idp:AdminInitiateAuth", 
                          "cognito-idp:InitiateAuth", 
                          "cognito-idp:InitiateAuth", 
-                         "cognito-idp:AdminConfirmSignUp"
+                         "cognito-idp:AdminConfirmSignUp",
+                         "cognito-idp:AdminGetUser"
                          ],
                 resources=["*"]
             )

@@ -1,4 +1,6 @@
 import json
+import boto3
+import os
 
 def response(status_code, body):
     return {
@@ -10,11 +12,8 @@ def response(status_code, body):
         },
         "body": json.dumps(body)
     }
-def handler(event, context):
-    import boto3
-    import json
-    import os
 
+def handler(event, context):
     client = boto3.client("cognito-idp")
     body = json.loads(event.get("body", "{}"))
 
@@ -22,12 +21,10 @@ def handler(event, context):
         required_fields = ["username", "email", "password", "first_name", "last_name", "birthdate"]
         for field in required_fields:
             if field not in body or not body[field]:
-                return {
-                    "statusCode": 400,
-                    "body": json.dumps({"error": f"Missing field: {field}"})
-                }
+                return response(400, {"error": f"Missing field: {field}"})
 
-        resp = client.sign_up(
+        # Default every new user to role "user"
+        client.sign_up(
             ClientId=os.environ["CLIENT_ID"],
             Username=body["username"],
             Password=body["password"],
@@ -35,7 +32,8 @@ def handler(event, context):
                 {"Name": "email", "Value": body["email"]},
                 {"Name": "given_name", "Value": body["first_name"]},
                 {"Name": "family_name", "Value": body["last_name"]},
-                {"Name": "birthdate", "Value": body["birthdate"]}  # Format: yyyy-MM-dd
+                {"Name": "birthdate", "Value": body["birthdate"]},
+                {"Name": "custom:role", "Value": "user"}
             ]
         )
 
@@ -44,6 +42,7 @@ def handler(event, context):
             Username=body["username"]
         )
 
-        return response(200, {"message": "User registered successfully"})
+        return response(200, {"message": "User registered successfully", "role": "user"})
+
     except Exception as e:
         return response(400, {"error": str(e)})
