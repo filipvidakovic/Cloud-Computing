@@ -1,5 +1,6 @@
 from aws_cdk import aws_apigateway as apigw
 from constructs import Construct
+from aws_cdk import aws_sqs as sqs
 
 from projekat.artists.artists_lambdas import ArtistLambdas
 from projekat.auth.auth_lambda import AuthLambdas
@@ -110,6 +111,11 @@ class ApiGateway(Construct):
             "PUT",
             apigw.LambdaIntegration(music_lambdas.update_music_lambda)
         )
+        all_songs_resource = music_resource.add_resource("all")
+        all_songs_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_all_songs_lambda)
+        )
         
         delete_by_artist = music_resource.add_resource("delete-by-artist").add_resource("{artistId}")
         delete_by_artist.add_method(
@@ -145,6 +151,38 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda)
         )
 
+        #feed
+        feed_resource = api.root.add_resource("feed")
+        feed_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(user_lambdas.get_feed_lambda),
+            authorization_type=apigw.AuthorizationType.COGNITO,
+            authorizer=authorizer,
+            method_responses=[apigw.MethodResponse(
+                status_code="200",
+                response_parameters={
+                    "method.response.header.Access-Control-Allow-Origin": True,
+                    "method.response.header.Access-Control-Allow-Headers": True,
+                    "method.response.header.Access-Control-Allow-Methods": True,
+                }
+            ),
+                apigw.MethodResponse(
+                    status_code="401",
+                    response_parameters={
+                        "method.response.header.Access-Control-Allow-Origin": True,
+                        "method.response.header.Access-Control-Allow-Headers": True,
+                        "method.response.header.Access-Control-Allow-Methods": True,
+                    }
+                ),
+                apigw.MethodResponse(
+                    status_code="500",
+                    response_parameters={
+                        "method.response.header.Access-Control-Allow-Origin": True,
+                        "method.response.header.Access-Control-Allow-Headers": True,
+                        "method.response.header.Access-Control-Allow-Methods": True,
+                    }
+                )]
+        )
 
         # subscriptions
         subscriptions_resource = api.root.add_resource("subscriptions")
@@ -181,6 +219,7 @@ class ApiGateway(Construct):
             "GET",
             apigw.LambdaIntegration(music_lambdas.download_song_lambda)
         )
+
 
         # transcriptions
         transcriptions_resource = api.root.add_resource("transcriptions")

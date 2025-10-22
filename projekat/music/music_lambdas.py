@@ -9,6 +9,7 @@ from ..config import PROJECT_PREFIX
 from aws_cdk import aws_iam as iam
 
 class MusicLambdas(Construct):
+
     def __init__(self, scope: Construct, id: str, music_table, song_table, artist_info_table, s3_bucket,rates_table, subscriptions_table, cognito, notifications_topic):
         super().__init__(scope, id)
 
@@ -24,6 +25,7 @@ class MusicLambdas(Construct):
             "ARTIST_INFO_TABLE": artist_info_table.table_name,
             "S3_BUCKET": s3_bucket.bucket_name,
             "RATES_TABLE": rates_table.table_name,
+            "USER_SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
             "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
             "NOTIFICATIONS_TOPIC_ARN": self.notifications_topic.topic_arn,
             "USER_POOL_ID": cognito.user_pool.user_pool_id
@@ -152,7 +154,21 @@ class MusicLambdas(Construct):
             },
             timeout=Duration.seconds(10),
         )
+
+        self.get_all_songs_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetAllSongsLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_songs.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars_common,
+            timeout=Duration.seconds(30),
+        )
+
         # Needs to read song metadata + presign S3
         song_table.grant_read_data(self.download_song_lambda)
+        song_table.grant_read_data(self.get_all_songs_lambda)
         s3_bucket.grant_read(self.download_song_lambda)
-
+        artist_info_table.grant_read_write_data(self.upload_music_lambda)
+        artist_info_table.grant_read_write_data(self.delete_music_lambda)
+        subscriptions_table.grant_read_data(self.upload_music_lambda)
+        subscriptions_table.grant_read_data(self.delete_music_lambda)

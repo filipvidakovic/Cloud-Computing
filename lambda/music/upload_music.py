@@ -8,6 +8,8 @@ from datetime import datetime
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+from common.queue import enqueue_recompute
+from boto3.dynamodb.conditions import Key
 
 # --- AWS Clients ---
 dynamodb = boto3.resource("dynamodb")
@@ -16,7 +18,6 @@ s3 = boto3.client("s3")
 sns = boto3.client("sns")
 cognito_client = boto3.client("cognito-idp")
 
-# --- Env Vars ---
 SONG_TABLE = os.environ["SONG_TABLE"]
 MUSIC_BY_GENRE_TABLE = os.environ["MUSIC_BY_GENRE_TABLE"]
 S3_BUCKET = os.environ["S3_BUCKET"]
@@ -24,11 +25,11 @@ TOPIC_ARN = os.environ["NOTIFICATIONS_TOPIC_ARN"]
 USER_POOL_ID = os.environ["USER_POOL_ID"]
 MUSIC_FOLDER = os.environ.get("MUSIC_FOLDER", "music")
 COVERS_FOLDER = os.environ.get("COVERS_FOLDER", "covers")
-SUBSCRIPTIONS_TABLE = os.environ["SUBSCRIPTIONS_TABLE"]
+SUBS_TABLE = os.environ["SUBSCRIPTIONS_TABLE"]
 subscriptions_table = dynamodb.Table(SUBSCRIPTIONS_TABLE)
-
-# --- Table Handles ---
 song_table = dynamodb.Table(SONG_TABLE)
+subs_table = dynamodb.Table(SUBS_TABLE)
+
 
 
 def response(status_code, body):
@@ -219,6 +220,30 @@ def lambda_handler(event, context):
                 item["albumId"] = {"S": album_id}
             actions.append({"Put": {"TableName": MUSIC_BY_GENRE_TABLE, "Item": item}})
 
+        ARTIST_INFO_TABLE = os.environ['ARTIST_INFO_TABLE']
+
+        # 3) For each artist, append musicId to their songs list
+        for artist_id in artist_ids:
+            actions.append({
+                "Update": {
+                    "TableName": ARTIST_INFO_TABLE,
+                    "Key": {
+                        "artistId": {"S": artist_id}
+                    },
+                    "UpdateExpression": "SET #songs = list_append(if_not_exists(#songs, :empty_list), :new_song)",
+                    "ExpressionAttributeNames": {
+                        "#songs": "songs"
+                    },
+                    "ExpressionAttributeValues": {
+                        ":new_song": {"L": [{"S": music_id}]},
+                        ":empty_list": {"L": []}
+                    }
+                }
+            })
+
+        # DynamoDB TransactWriteItems has a limit of 25 actions per request.
+        # If we exceed it (rare—only with many genres+artists), we split into chunks.
+        # We always write the SONG_TABLE put first to ensure ID existence.
         # --- Write to DynamoDB (chunk if >25) ---
         if len(actions) <= 25:
             dynamo_client.transact_write_items(TransactItems=actions)
@@ -227,6 +252,33 @@ def lambda_handler(event, context):
             for batch in _chunked(actions[1:], 25):
                 dynamo_client.transact_write_items(TransactItems=batch)
 
+        # --- Recompute feed for subscribed users ---
+        try:
+            # notify users subscribed by genre
+            for g in genres:
+                resp = subs_table.query(
+                    IndexName="SubscriptionTypeTargetIdIndex",
+                    KeyConditionExpression=Key("subscriptionType").eq("genre") & Key("targetId").eq(g)
+                )
+                for item in resp.get("Items", []):
+                    user_id = item["userId"]
+                    enqueue_recompute(user_id, "new_song_genre", music_id)
+
+            # notify users subscribed by artist
+            for artist_id in artist_ids:
+                resp = subs_table.query(
+                    IndexName="SubscriptionTypeTargetIdIndex",
+                    KeyConditionExpression=Key("subscriptionType").eq("artist") & Key("targetId").eq(artist_id)
+                )
+                for item in resp.get("Items", []):
+                    user_id = item["userId"]
+                    print("U music upload reloaduje feed za korisnika ",user_id," jer je subscribed na artista nove pesme ",artist_id)
+                    enqueue_recompute(user_id, "new_song_artist", music_id)
+
+        except Exception as e:
+            pass
+
+        # Success
         # --- Publish notification ---
         send_notifications(artist_ids, genres, title)
 

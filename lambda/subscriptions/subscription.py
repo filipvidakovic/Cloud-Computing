@@ -3,13 +3,20 @@ import json
 import boto3
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
+from common.queue import enqueue_recompute
+
+def get_user_id(event):
+    rc = event.get("requestContext", {})
+    auth = rc.get("authorizer", {})
+    if "claims" in auth:   
+        return auth["claims"].get("sub")
+    return None
 
 # --- AWS Clients ---
 dynamodb = boto3.resource("dynamodb")
 sns = boto3.client("sns")
 cognito = boto3.client("cognito-idp")
 
-# --- Env Vars ---
 TABLE_NAME = os.environ["SUBSCRIPTIONS_TABLE"]
 NOTIFICATIONS_TOPIC_ARN = os.environ["NOTIFICATIONS_TOPIC_ARN"]
 USER_POOL_ID = os.environ["USER_POOL_ID"]
@@ -94,6 +101,32 @@ def handle_post(event):
 
     # Subscribe to SNS topic
     try:
+        user_id = get_user_id(event)
+        if not user_id:
+            return response(401, {"error": "Unauthorized"})
+
+        body = json.loads(event.get("body", "{}"))
+        subscription_type = body.get("type")
+        target_id = body.get("id")
+
+        if not user_id or not subscription_type or not target_id:
+            return response(400, {"error": "userId, type, and id are required"})
+
+        subscription_key = f"{subscription_type}#{target_id}"
+
+        item = {
+            "userId": user_id,
+            "subscriptionId": subscription_key,
+            "subscriptionType": subscription_type,
+            "targetId": target_id,
+            "createdAt": datetime.utcnow().isoformat()
+        }
+
+        table.put_item(Item=item)
+
+        # Send SQS message to recompute feed
+        enqueue_recompute(user_id, "subscribe", target_id)
+
         sns.subscribe(
             TopicArn=NOTIFICATIONS_TOPIC_ARN,
             Protocol="email",
@@ -139,6 +172,9 @@ def handle_delete(event):
             },
             ConditionExpression="attribute_exists(subscriptionId)"
         )
+        # Send SQS message to recompute feed
+        enqueue_recompute(user_id, "unsubscribe", subscription_id)
+
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         return response(404, {"error": "Subscription not found"})
     except Exception as e:

@@ -1,4 +1,5 @@
 import os, json, boto3
+from common.queue import enqueue_recompute
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["RATES_TABLE"])
@@ -33,5 +34,8 @@ def lambda_handler(event, context):
         return build_response(400, {"error": "userId and musicId are required"})
 
     table.delete_item(Key={"userId": user_id, "musicId": music_id})
+
+    # Send SQS message to recompute feed
+    enqueue_recompute(user_id, "unsubscribe_rate", music_id)
 
     return build_response(200, {"message": "Rate deleted"})
