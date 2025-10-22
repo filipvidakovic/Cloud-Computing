@@ -1,4 +1,6 @@
 import json
+import boto3
+import os
 
 def response(status_code, body):
     return {
@@ -10,14 +12,13 @@ def response(status_code, body):
         },
         "body": json.dumps(body)
     }
-def handler(event, context):
-    import boto3, json, os
 
+def handler(event, context):
     client = boto3.client("cognito-idp")
     body = json.loads(event.get("body", "{}"))
 
     try:
-        resp = client.initiate_auth(
+        auth_resp = client.initiate_auth(
             AuthFlow="USER_PASSWORD_AUTH",
             AuthParameters={
                 "USERNAME": body["username"],
@@ -25,6 +26,28 @@ def handler(event, context):
             },
             ClientId=os.environ["CLIENT_ID"]
         )
-        return response(200, resp["AuthenticationResult"])
+
+        # Get tokens
+        tokens = auth_resp["AuthenticationResult"]
+
+        # Fetch role
+        user_resp = client.admin_get_user(
+            UserPoolId=os.environ["USER_POOL_ID"],
+            Username=body["username"]
+        )
+
+        role = None
+        for attr in user_resp["UserAttributes"]:
+            if attr["Name"] == "custom:role":
+                role = attr["Value"]
+                break
+
+        return response(200, {
+            "access_token": tokens["AccessToken"],
+            "refresh_token": tokens.get("RefreshToken"),
+            "id_token": tokens["IdToken"],
+            "role": role
+        })
+
     except Exception as e:
         return response(400, {"error": str(e)})
