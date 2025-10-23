@@ -218,7 +218,6 @@ def lambda_handler(event, context):
 
         # delete old feed before writing new
         clear_old_feed(user_id)
-        print("Found ", len(top50), " top 50 songs")
         # save top 50 songs to users feed
         with feed_table.batch_writer() as batch:
             for item in top50:
@@ -230,22 +229,18 @@ def lambda_handler(event, context):
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
 
 def lambda_sqs_handler(event, context):
-    print("📥 SQS Event:", json.dumps(event))  # log entire payload
 
     # groups messages by user
     by_user = defaultdict(list)
     for rec in event.get("Records", []):
-        print("➡️ Raw record:", rec)  # log each record
 
         try:
             msg = json.loads(rec["body"])
-            print("✅ Parsed message:", msg)
 
             uid = msg.get("userId")
             if uid:
                 by_user[uid].append(msg)
         except Exception as e:
-            print("❌ Failed to parse record body:", rec.get("body"), e)
             raise
 
     # recompute for each user once
