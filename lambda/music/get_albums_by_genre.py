@@ -131,7 +131,7 @@ def lambda_handler(event, context):
         albums = {}
         for it in index_items:
             mid = it.get("musicId")
-            alb = it.get("albumId")
+            alb = it.get("albumId") or "Singles"
             if not mid or not alb:
                 continue
             if alb not in albums:
