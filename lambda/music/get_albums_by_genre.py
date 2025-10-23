@@ -64,8 +64,15 @@ def _batch_get_songs_by_ids(ids):
     if not ids:
         return found
     CHUNK = 100
-    proj_expr = "#mid,#title,#curl,#alb"
-    expr_names = {"#mid":"musicId","#title":"title","#curl":"coverUrl","#alb":"albumId"}
+    proj_expr = "#mid,#title,#curl,#alb,#genre,#genres"
+    expr_names = {
+        "#mid": "musicId",
+        "#title": "title",
+        "#curl": "coverUrl",
+        "#alb": "albumId",
+        "#genre": "genre",
+        "#genres": "genres",
+    }
 
     for i in range(0, len(ids), CHUNK):
         keys = [{"musicId": {"S": mid}} for mid in ids[i:i+CHUNK]]
@@ -128,7 +135,7 @@ def lambda_handler(event, context):
             if not mid or not alb:
                 continue
             if alb not in albums:
-                albums[alb] = {"albumId": alb, "musicIds": [mid], "titleList": [], "coverUrl": None}
+                albums[alb] = {"albumId": alb, "musicIds": [mid], "titleList": [], "coverUrl": None, "genres": set(),}
             else:
                 albums[alb]["musicIds"].append(mid)
 
@@ -142,12 +149,20 @@ def lambda_handler(event, context):
         # 4) Fill cover (first non-empty among tracks)
         for alb, data in albums.items():
             cover = None
+            genre_set = set()
             for mid in data["musicIds"]:
                 song = songs_by_id.get(mid, {})
                 if not cover and song.get("coverUrl"):
                     cover = _presign_from_full_url(song["coverUrl"]) or song["coverUrl"]
-                    break
+
+                genre_value = song.get("genres") or song.get("genre")
+                if isinstance(genre_value, list):
+                    genre_set.update(genre_value)
+                elif genre_value:
+                    genre_set.add(genre_value)
+
             data["coverUrl"] = cover
+            data["genres"] = sorted(list(genre_set))
 
         return response(200, {"albums": list(albums.values())})
 
