@@ -130,16 +130,17 @@ class ApiGateway(Construct):
             "PUT",
             apigw.LambdaIntegration(music_lambdas.update_music_lambda),
         )
+        delete_batch = music_resource.add_resource("deleteBatch")
+        delete_batch.add_method(
+            "POST",
+            apigw.LambdaIntegration(music_lambdas.delete_music_batch_by_ids_lambda)
+        )
 
-        # NEW: /music/by-artist/{artistId}
         by_artist = music_resource.add_resource("by-artist")
         by_artist_id = by_artist.add_resource("{artistId}")
         by_artist_id.add_method(
             "GET",
-            apigw.LambdaIntegration(music_lambdas.get_songs_by_artist_lambda),
-            # If you want to require login to include 'rate', uncomment:
-            # authorization_type=apigw.AuthorizationType.COGNITO,
-            # authorizer=authorizer,
+            apigw.LambdaIntegration(music_lambdas.get_songs_by_artist_lambda)
         )
 
         all_songs_resource = music_resource.add_resource("all")

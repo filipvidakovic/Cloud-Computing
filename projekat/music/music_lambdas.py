@@ -186,13 +186,29 @@ class MusicLambdas(Construct):
             environment={
                 "ARTIST_INFO_TABLE": artist_info_table.table_name,
                 "SONG_TABLE": song_table.table_name,
-                "RATES_TABLE": rates_table.table_name,  # if you want user rates included
+                "RATES_TABLE": rates_table.table_name,
                 "S3_BUCKET": s3_bucket.bucket_name,
             },
             timeout=Duration.seconds(15),
         )
         artist_info_table.grant_read_data(self.get_songs_by_artist_lambda)
         song_table.grant_read_data(self.get_songs_by_artist_lambda)
-        rates_table.grant_read_data(self.get_songs_by_artist_lambda)  # if using rates
-        s3_bucket.grant_read(self.get_songs_by_artist_lambda)  # for presigning
+        rates_table.grant_read_data(self.get_songs_by_artist_lambda)
+        s3_bucket.grant_read(self.get_songs_by_artist_lambda)
+
+        self.delete_music_batch_by_ids_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}DeleteMusicBatchByIdsLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_music_batch_by_ids.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment={
+                "SONG_TABLE": song_table.table_name,
+                "MUSIC_BY_GENRE_TABLE": music_table.table_name,
+                "ARTIST_INFO_TABLE": artist_info_table.table_name,
+            },
+            timeout=Duration.seconds(60),
+        )
+        song_table.grant_read_write_data(self.delete_music_batch_by_ids_lambda)
+        music_table.grant_read_write_data(self.delete_music_batch_by_ids_lambda)
+        artist_info_table.grant_read_write_data(self.delete_music_batch_by_ids_lambda)
 
