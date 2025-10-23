@@ -111,6 +111,7 @@ class ApiGateway(Construct):
             "PUT",
             apigw.LambdaIntegration(music_lambdas.update_music_lambda)
         )
+
         all_songs_resource = music_resource.add_resource("all")
         all_songs_resource.add_method(
             "GET",
@@ -220,6 +221,11 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.download_song_lambda)
         )
 
+        signed_get = music_resource.add_resource("signedGet")
+        signed_get.add_method(
+            "GET",
+            apigw.LambdaIntegration(music_lambdas.get_signed_music_lambda)
+        )
 
         # transcriptions
         transcriptions_resource = api.root.add_resource("transcriptions")

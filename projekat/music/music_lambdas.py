@@ -28,7 +28,8 @@ class MusicLambdas(Construct):
             "USER_SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
             "SUBSCRIPTIONS_TABLE": subscriptions_table.table_name,
             "NOTIFICATIONS_TOPIC_ARN": self.notifications_topic.topic_arn,
-            "USER_POOL_ID": cognito.user_pool.user_pool_id
+            "USER_POOL_ID": cognito.user_pool.user_pool_id,
+            "SIGNED_URL_TTL_SECONDS": "900"
         }
 
         # ---------- Upload ----------
@@ -173,3 +174,15 @@ class MusicLambdas(Construct):
         artist_info_table.grant_read_write_data(self.delete_music_lambda)
         subscriptions_table.grant_read_data(self.upload_music_lambda)
         subscriptions_table.grant_read_data(self.delete_music_lambda)
+
+        self.get_signed_music_lambda = _lambda.Function(
+            self, f"{PROJECT_PREFIX}GetSignedMusicLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="get_music_signed.lambda_handler",
+            code=_lambda.Code.from_asset("lambda/music"),
+            environment=env_vars_common,
+            timeout=Duration.seconds(10),
+        )
+        song_table.grant_read_data(self.get_signed_music_lambda)
+        s3_bucket.grant_read(self.get_signed_music_lambda)
+        self.signed_get_lambda = self.get_signed_music_lambda
