@@ -189,6 +189,7 @@ class ProjekatStack(Stack):
             music_table=self.music_table,
             song_table=self.song_table,
             artist_info_table=self.artist_info_table,
+            s3_bucket=self.music_bucket
         )
 
 
