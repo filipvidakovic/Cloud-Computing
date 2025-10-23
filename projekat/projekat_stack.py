@@ -36,6 +36,7 @@ class ProjekatStack(Stack):
             auto_delete_objects=True 
         )
 
+
         self.music_bucket.add_to_resource_policy(
             iam.PolicyStatement(
                 actions=["s3:GetObject"],
@@ -57,6 +58,13 @@ class ProjekatStack(Stack):
                 resources=[f"{self.music_bucket.bucket_arn}/transcriptions/*", self.music_bucket.bucket_arn],
                 principals=[iam.ServicePrincipal("transcribe.amazonaws.com")]
             )
+        )
+
+        self.music_bucket.add_cors_rule(
+            allowed_methods=[s3.HttpMethods.GET],
+            allowed_origins=["http://localhost:5173"],
+            allowed_headers=["*"],
+            max_age=3000
         )
 
         notifications_topic = sns.Topic(
