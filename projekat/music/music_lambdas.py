@@ -167,6 +167,7 @@ class MusicLambdas(Construct):
         # Needs to read song metadata + presign S3
         song_table.grant_read_data(self.download_song_lambda)
         song_table.grant_read_data(self.get_all_songs_lambda)
+        s3_bucket.grant_read(self.get_all_songs_lambda)
         s3_bucket.grant_read(self.download_song_lambda)
         artist_info_table.grant_read_write_data(self.upload_music_lambda)
         artist_info_table.grant_read_write_data(self.delete_music_lambda)
