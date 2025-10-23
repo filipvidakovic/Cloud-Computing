@@ -257,15 +257,12 @@ class ApiGateway(Construct):
 
         # ---------- Transcriptions ----------
         transcriptions_resource = api.root.add_resource("transcriptions")
-        transcriptions_resource.add_resource("{songId}").add_method(
+
+        transcription_song_resource = transcriptions_resource.add_resource("{songId}")
+        transcription_song_resource.add_method(
             "GET",
-            apigw.LambdaIntegration(transcription_stack.process_fn),
+            apigw.LambdaIntegration(transcription_stack.get_fn),
             authorization_type=apigw.AuthorizationType.COGNITO,
             authorizer=authorizer,
         )
-        transcriptions_resource.add_resource("start").add_method(
-            "POST",
-            apigw.LambdaIntegration(transcription_stack.start_fn),
-            authorization_type=apigw.AuthorizationType.COGNITO,
-            authorizer=authorizer,
-        )
+
