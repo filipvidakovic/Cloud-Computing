@@ -158,12 +158,15 @@ def handle_delete(event):
 
     path_params = event.get("pathParameters") or {}
     key = path_params.get("subscriptionKey")
-    if not key or "#" not in key:
-        return response(400, {"error": "subscriptionKey is required and must be type#id"})
 
-    subscription_type, target_id = key.split("#", 1)
-    subscription_key = f"{subscription_type}#{target_id}"
-
+    try:
+        subscription_type, target_id = key.split("=", 1)
+        subscription_key = f"{subscription_type}#{target_id}"
+        if not subscription_key or "#" not in subscription_key:
+            return response(400, {"error": "subscriptionKey is required and must be type#id"})
+    except Exception:
+        return response(400, {"error": "Invalid subscriptionKey format"})
+    
     try:
         table.delete_item(
             Key={
@@ -173,7 +176,7 @@ def handle_delete(event):
             ConditionExpression="attribute_exists(subscriptionId)"
         )
         # Send SQS message to recompute feed
-        enqueue_recompute(user_id, "unsubscribe", subscription_id)
+        enqueue_recompute(user_sub, "unsubscribe", subscription_key)
 
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         return response(404, {"error": "Subscription not found"})

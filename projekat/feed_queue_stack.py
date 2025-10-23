@@ -5,9 +5,12 @@ from aws_cdk import (
     aws_lambda_event_sources as lambda_events,
 )
 from constructs import Construct
+from typing import List
+
+from projekat.config import PROJECT_PREFIX
 
 class FeedQueueStack(Construct):
-    def __init__(self, scope: Construct, id: str, *, env_vars: dict, producer_fns: list[_lambda.Function],
+    def __init__(self, scope: Construct, id: str, *, env_vars: dict, producer_fns: List[_lambda.Function],
                  user_feed_table=None, user_history_table=None, user_subscriptions_table=None,
                  user_reactions_table=None, music_table=None, song_table=None, artist_info_table=None) -> None:
         super().__init__(scope, id)
@@ -15,7 +18,7 @@ class FeedQueueStack(Construct):
         # DLQ for failures
         dlq = sqs.Queue(
             self, "UserFeedRecomputeDLQ",
-            queue_name="UserFeedRecomputeDLQ.fifo",
+            queue_name=f"{PROJECT_PREFIX}UserFeedRecomputeDLQ.fifo",
             fifo=True,
             content_based_deduplication=True,
             retention_period=Duration.days(14),
@@ -23,7 +26,7 @@ class FeedQueueStack(Construct):
         # sqs queue for feed recomputing
         self.queue = sqs.Queue(
             self, "UserFeedRecomputeQueue",
-            queue_name="UserFeedRecomputeQueue.fifo",
+            queue_name=f"{PROJECT_PREFIX}UserFeedRecomputeQueue.fifo",
             fifo=True,
             content_based_deduplication=True,
             visibility_timeout=Duration.seconds(90),
@@ -40,7 +43,8 @@ class FeedQueueStack(Construct):
             handler="feed.lambda_sqs_handler",
             code=_lambda.Code.from_asset("lambda/user"),
             timeout=Duration.seconds(60),
-            environment=env_vars | {
+            environment = {
+                **env_vars,
                 "RECOMPUTE_SOURCE": "sqs",
             },
         )

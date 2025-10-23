@@ -224,18 +224,11 @@ class ApiGateway(Construct):
         # transcriptions
         transcriptions_resource = api.root.add_resource("transcriptions")
 
-        # fetch transcript (processed Lambda)
-        transcriptions_resource.add_resource("{songId}").add_method(
+        transcription_song_resource = transcriptions_resource.add_resource("{songId}")
+        transcription_song_resource.add_method(
             "GET",
-            apigw.LambdaIntegration(transcription_stack.process_fn),  # process lambda can also return transcript
+            apigw.LambdaIntegration(transcription_stack.get_fn),
             authorization_type=apigw.AuthorizationType.COGNITO,
             authorizer=authorizer,
         )
 
-        # (optional) trigger transcription manually
-        transcriptions_resource.add_resource("start").add_method(
-            "POST",
-            apigw.LambdaIntegration(transcription_stack.start_fn),
-            authorization_type=apigw.AuthorizationType.COGNITO,
-            authorizer=authorizer,
-        )

@@ -26,7 +26,7 @@ USER_POOL_ID = os.environ["USER_POOL_ID"]
 MUSIC_FOLDER = os.environ.get("MUSIC_FOLDER", "music")
 COVERS_FOLDER = os.environ.get("COVERS_FOLDER", "covers")
 SUBS_TABLE = os.environ["SUBSCRIPTIONS_TABLE"]
-subscriptions_table = dynamodb.Table(SUBSCRIPTIONS_TABLE)
+subscriptions_table = dynamodb.Table(SUBS_TABLE)
 song_table = dynamodb.Table(SONG_TABLE)
 subs_table = dynamodb.Table(SUBS_TABLE)
 
