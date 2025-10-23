@@ -15,6 +15,7 @@ class UserLambdas(Construct):
         music_table,
         song_table,
         artist_info_table,
+        s3_bucket
     ):
         super().__init__(scope, id)
 
@@ -68,8 +69,10 @@ class UserLambdas(Construct):
             environment={
                 "USER_FEED_TABLE": user_feed_table.table_name,
                 "SONG_TABLE": song_table.table_name,
+                "S3_BUCKET": s3_bucket.bucket_name
             },
             timeout=Duration.seconds(10),
         )
         user_feed_table.grant_read_data(self.get_feed_lambda)
         song_table.grant_read_data(self.get_feed_lambda)
+        s3_bucket.grant_read(self.get_feed_lambda)
