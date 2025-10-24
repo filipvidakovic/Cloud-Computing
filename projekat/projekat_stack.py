@@ -20,6 +20,7 @@ from projekat.subscriptions.subscriptions_lambdas import SubscriptionsLambdas
 from projekat.subscriptions.subscriptions_table import SubscriptionsTableStack
 from projekat.transcription.transcription_stack import TranscriptionStack
 from projekat.user.user_lambdas import UserLambdas
+from projekat.frontend.amplify_stack import FrontendStack
 from projekat.music.music_lambdas import MusicLambdas
 from projekat.feed_queue_stack import FeedQueueStack
 from projekat.config import PROJECT_PREFIX
@@ -28,6 +29,7 @@ from projekat.config import PROJECT_PREFIX
 class ProjekatStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        
 
         # ---------- S3 BUCKET ----------
         self.music_bucket = s3.Bucket(
@@ -227,18 +229,16 @@ class ProjekatStack(Stack):
             s3_bucket=self.music_bucket,
         )
 
-        # ---------- API GATEWAY ----------
-        ApiGateway(
-            self,
-            f"{PROJECT_PREFIX}ApiGateway",
-            auth_lambdas=auth_lambdas,
-            artist_lambdas=artist_lambdas,
-            music_lambdas=music_lambdas,
-            subscription_lambdas=subscription_lambdas,
-            cognito=cognito,
-            user_lambdas=user_lambdas,
-            rate_lambdas=rate_lambdas,
-            transcription_stack=self.transcription,
+
+        api_gateway = ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", 
+                   auth_lambdas=auth_lambdas, 
+                   artist_lambdas=artist_lambdas, 
+                   music_lambdas=music_lambdas, 
+                   subscription_lambdas=subscription_lambdas, 
+                   cognito=cognito,
+                   user_lambdas=user_lambdas,
+                   rate_lambdas=rate_lambdas,
+                   transcription_stack=self.transcription
         )
 
         # ---------- FEED QUEUE ----------
@@ -269,3 +269,8 @@ class ProjekatStack(Stack):
             song_table=self.song_table,
             artist_info_table=self.artist_info_table,
         )
+        frontend_stack = FrontendStack(
+            self, "FrontendStack",
+            api_gateway_url=f"https://{api_gateway.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/prod"
+        )
+
