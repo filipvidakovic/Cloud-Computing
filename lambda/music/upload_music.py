@@ -26,7 +26,6 @@ USER_POOL_ID = os.environ["USER_POOL_ID"]
 MUSIC_FOLDER = os.environ.get("MUSIC_FOLDER", "music")
 COVERS_FOLDER = os.environ.get("COVERS_FOLDER", "covers")
 SUBS_TABLE = os.environ["SUBSCRIPTIONS_TABLE"]
-subscriptions_table = dynamodb.Table(SUBS_TABLE)
 song_table = dynamodb.Table(SONG_TABLE)
 subs_table = dynamodb.Table(SUBS_TABLE)
 
@@ -81,7 +80,7 @@ def get_subscribed_user_ids(subscription_type, target_id):
     """
     print(f"Fetching subscribers for {subscription_type} {target_id}")
     try:
-        resp = subscriptions_table.query(
+        resp = subs_table.query(
             IndexName="SubscriptionTypeTargetIdIndex",
             KeyConditionExpression=(
                 Key("subscriptionType").eq(subscription_type) &
