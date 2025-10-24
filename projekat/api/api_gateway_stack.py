@@ -27,7 +27,7 @@ class ApiGateway(Construct):
         transcription_stack: TranscriptionStack,
     ):
         super().__init__(scope, id)
-        
+
         self.api = apigw.RestApi(
             self,
             f"{PROJECT_PREFIX}RESTApi",
@@ -43,7 +43,7 @@ class ApiGateway(Construct):
         )
 
         # CORS on default 4xx/5xx from API Gateway itself
-        api.add_gateway_response(
+        self.api.add_gateway_response(
             "Default4xx",
             type=apigw.ResponseType.DEFAULT_4_XX,
             response_headers={
@@ -52,7 +52,7 @@ class ApiGateway(Construct):
                 "Access-Control-Allow-Methods": "'*'",
             },
         )
-        api.add_gateway_response(
+        self.api.add_gateway_response(
             "Default5xx",
             type=apigw.ResponseType.DEFAULT_5_XX,
             response_headers={
@@ -110,14 +110,9 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(artist_lambdas.update_artist_lambda),
         )
 
-<<<<<<< HEAD
 
         # music content
         music_resource = self.api.root.add_resource("music")
-=======
-        # ---------- Music ----------
-        music_resource = api.root.add_resource("music")
->>>>>>> main
         music_resource.add_method(
             "POST",
             apigw.LambdaIntegration(music_lambdas.upload_music_lambda),
@@ -153,13 +148,8 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.get_all_songs_lambda),
         )
 
-<<<<<<< HEAD
         # content rates
         rate_resource = self.api.root.add_resource("rate")
-=======
-        # ---------- Rates ----------
-        rate_resource = api.root.add_resource("rate")
->>>>>>> main
         rate_resource.add_method(
             "POST",
             apigw.LambdaIntegration(rate_lambdas.create_rate_lambda),
@@ -186,13 +176,8 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.get_albums_by_genre_lambda),
         )
 
-<<<<<<< HEAD
         #feed
         feed_resource = self.api.root.add_resource("feed")
-=======
-        # ---------- Feed ----------
-        feed_resource = api.root.add_resource("feed")
->>>>>>> main
         feed_resource.add_method(
             "GET",
             apigw.LambdaIntegration(user_lambdas.get_feed_lambda),
@@ -226,13 +211,8 @@ class ApiGateway(Construct):
             ],
         )
 
-<<<<<<< HEAD
         # subscriptions
         subscriptions_resource = self.api.root.add_resource("subscriptions")
-=======
-        # ---------- Subscriptions ----------
-        subscriptions_resource = api.root.add_resource("subscriptions")
->>>>>>> main
         subscriptions_resource.add_method(
             "GET",
             apigw.LambdaIntegration(subscription_lambdas.subscriptions_lambda),
@@ -274,14 +254,9 @@ class ApiGateway(Construct):
             apigw.LambdaIntegration(music_lambdas.get_signed_music_lambda),
         )
 
-<<<<<<< HEAD
 
         # transcriptions
         transcriptions_resource = self.api.root.add_resource("transcriptions")
-=======
-        # ---------- Transcriptions ----------
-        transcriptions_resource = api.root.add_resource("transcriptions")
->>>>>>> main
 
         transcription_song_resource = transcriptions_resource.add_resource("{songId}")
         transcription_song_resource.add_method(
