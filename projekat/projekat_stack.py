@@ -23,12 +23,13 @@ from projekat.music.music_lambdas import MusicLambdas
 from projekat.subscriptions.subscriptions_table import SubscriptionsTableStack
 from projekat.transcription.transcription_stack import TranscriptionStack
 from projekat.user.user_lambdas import UserLambdas
-
+from projekat.frontend.amplify_stack import FrontendStack
 
 class ProjekatStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        
 
         self.music_bucket = s3.Bucket(
             self, "MusicBucket",
@@ -193,7 +194,7 @@ class ProjekatStack(Stack):
         )
 
 
-        ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", 
+        api_gateway = ApiGateway(self, f"{PROJECT_PREFIX}ApiGateway", 
                    auth_lambdas=auth_lambdas, 
                    artist_lambdas=artist_lambdas, 
                    music_lambdas=music_lambdas, 
@@ -228,5 +229,9 @@ class ProjekatStack(Stack):
             music_table=self.music_table,
             song_table=self.song_table,
             artist_info_table=self.artist_info_table,
+        )
+        frontend_stack = FrontendStack(
+            self, "FrontendStack",
+            api_gateway_url=f"https://{api_gateway.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/prod"
         )
 
